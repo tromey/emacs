@@ -821,6 +821,11 @@ final clause, and matches if no other keys match.
 
 ;;; Blocks and exits.
 
+(defun cl--block-symbol (name)
+  (let ((sym (intern (format "--cl-block-%s--" name))))
+    (put sym :cl-block-p t)
+    sym))
+
 ;;;###autoload
 (defmacro cl-block (name &rest body)
   "Define a lexically-scoped block named NAME.
@@ -834,7 +839,7 @@ called from BODY."
   (declare (indent 1) (debug (symbolp body)))
   (if (cl--safe-expr-p `(progn ,@body)) `(progn ,@body)
     `(cl--block-wrapper
-      (catch ',(intern (format "--cl-block-%s--" name))
+      (catch ',(cl--block-symbol name)
         ,@body))))
 
 ;;;###autoload
@@ -852,7 +857,7 @@ returning RESULT from that form (or nil if RESULT is omitted).
 This is compatible with Common Lisp, but note that `defun' and
 `defmacro' do not create implicit blocks as they do in Common Lisp."
   (declare (indent 1) (debug (symbolp &optional form)))
-  (let ((name2 (intern (format "--cl-block-%s--" name))))
+  (let ((name2 (cl--block-symbol name)))
     `(cl--block-throw ',name2 ,result)))
 
 
