@@ -25,6 +25,11 @@
 ;; triggered.
 (defvar files-test-result nil)
 
+;; Where supplementary files can be found.
+(defvar files-tests-data-dir
+  (expand-file-name "data/files-resources/"
+                    (getenv "EMACS_TEST_DIRECTORY")))
+
 (defvar files-test-safe-result nil)
 (put 'files-test-safe-result 'safe-local-variable 'booleanp)
 
@@ -242,6 +247,11 @@ be $HOME."
                          (expand-file-name (read-file-name "File: "))
                          (concat "/:/:" subdir)))))
       (delete-directory dir 'recursive))))
+
+(ert-deftest files-test-dir-locals-auto-mode-alist ()
+  "Test an `auto-mode-alist' entry in `.dir-locals.el'"
+  (find-file (expand-file-name "whatever.quux" files-tests-data-dir))
+  (should (eq major-mode 'tcl-mode)))
 
 (provide 'files-tests)
 ;;; files-tests.el ends here
