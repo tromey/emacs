@@ -228,7 +228,9 @@ with args, toggle notify status of people."
 		(if (erc-server-buffer-p)
 		    (setq erc-last-ison (delete (car args) erc-last-ison))))))
 	(setq erc-notify-list (cons (erc-string-no-properties (car args))
-				    erc-notify-list)))
+				    erc-notify-list))
+	;; If we added anyone, make sure erc-notify-mode is enabled.
+	(erc-notify-mode 1))
       (setq args (cdr args)))
     (erc-display-message
      nil 'notice 'active
