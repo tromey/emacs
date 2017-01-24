@@ -40,14 +40,6 @@ static void sort_vector_copy (Lisp_Object, ptrdiff_t,
 			      Lisp_Object *restrict, Lisp_Object *restrict);
 static bool internal_equal (Lisp_Object, Lisp_Object, int, bool, Lisp_Object);
 
-DEFUN ("identity", Fidentity, Sidentity, 1, 1, 0,
-       doc: /* Return the argument unchanged.  */
-       attributes: const)
-  (Lisp_Object arg)
-{
-  return arg;
-}
-
 DEFUN ("random", Frandom, Srandom, 0, 1, 0,
        doc: /* Return a pseudo-random number.
 All integers representable in Lisp, i.e. between `most-negative-fixnum'
@@ -1145,27 +1137,6 @@ an error is signaled.  */)
 }
 
 
-DEFUN ("copy-alist", Fcopy_alist, Scopy_alist, 1, 1, 0,
-       doc: /* Return a copy of ALIST.
-This is an alist which represents the same mapping from objects to objects,
-but does not share the alist structure with ALIST.
-The objects mapped (cars and cdrs of elements of the alist)
-are shared, however.
-Elements of ALIST that are not conses are also shared.  */)
-  (Lisp_Object alist)
-{
-  if (NILP (alist))
-    return alist;
-  alist = concat (1, &alist, Lisp_Cons, false);
-  for (Lisp_Object tem = alist; !NILP (tem); tem = XCDR (tem))
-    {
-      Lisp_Object car = XCAR (tem);
-      if (CONSP (car))
-	XSETCAR (tem, Fcons (XCAR (car), XCDR (car)));
-    }
-  return alist;
-}
-
 /* Check that ARRAY can have a valid subarray [FROM..TO),
    given that its size is SIZE.
    If FROM is nil, use 0; if TO is nil, use SIZE.
@@ -1299,104 +1270,6 @@ substring_both (Lisp_Object string, ptrdiff_t from, ptrdiff_t from_byte,
   return res;
 }
 
-DEFUN ("nthcdr", Fnthcdr, Snthcdr, 2, 2, 0,
-       doc: /* Take cdr N times on LIST, return the result.  */)
-  (Lisp_Object n, Lisp_Object list)
-{
-  CHECK_NUMBER (n);
-  Lisp_Object tail = list;
-  for (EMACS_INT num = XINT (n); 0 < num; num--)
-    {
-      if (! CONSP (tail))
-	{
-	  CHECK_LIST_END (tail, list);
-	  return Qnil;
-	}
-      tail = XCDR (tail);
-      rarely_quit (num);
-    }
-  return tail;
-}
-
-DEFUN ("nth", Fnth, Snth, 2, 2, 0,
-       doc: /* Return the Nth element of LIST.
-N counts from zero.  If LIST is not that long, nil is returned.  */)
-  (Lisp_Object n, Lisp_Object list)
-{
-  return Fcar (Fnthcdr (n, list));
-}
-
-DEFUN ("elt", Felt, Selt, 2, 2, 0,
-       doc: /* Return element of SEQUENCE at index N.  */)
-  (register Lisp_Object sequence, Lisp_Object n)
-{
-  CHECK_NUMBER (n);
-  if (CONSP (sequence) || NILP (sequence))
-    return Fcar (Fnthcdr (n, sequence));
-
-  /* Faref signals a "not array" error, so check here.  */
-  CHECK_ARRAY (sequence, Qsequencep);
-  return Faref (sequence, n);
-}
-
-DEFUN ("member", Fmember, Smember, 2, 2, 0,
-       doc: /* Return non-nil if ELT is an element of LIST.  Comparison done with `equal'.
-The value is actually the tail of LIST whose car is ELT.  */)
-  (Lisp_Object elt, Lisp_Object list)
-{
-  Lisp_Object tail = list;
-  FOR_EACH_TAIL (tail)
-    if (! NILP (Fequal (elt, XCAR (tail))))
-      return tail;
-  CHECK_LIST_END (tail, list);
-  return Qnil;
-}
-
-DEFUN ("memq", Fmemq, Smemq, 2, 2, 0,
-       doc: /* Return non-nil if ELT is an element of LIST.  Comparison done with `eq'.
-The value is actually the tail of LIST whose car is ELT.  */)
-  (Lisp_Object elt, Lisp_Object list)
-{
-  Lisp_Object tail = list;
-  FOR_EACH_TAIL (tail)
-    if (EQ (XCAR (tail), elt))
-      return tail;
-  CHECK_LIST_END (tail, list);
-  return Qnil;
-}
-
-DEFUN ("memql", Fmemql, Smemql, 2, 2, 0,
-       doc: /* Return non-nil if ELT is an element of LIST.  Comparison done with `eql'.
-The value is actually the tail of LIST whose car is ELT.  */)
-  (Lisp_Object elt, Lisp_Object list)
-{
-  if (!FLOATP (elt))
-    return Fmemq (elt, list);
-
-  Lisp_Object tail = list;
-  FOR_EACH_TAIL (tail)
-    {
-      Lisp_Object tem = XCAR (tail);
-      if (FLOATP (tem) && internal_equal (elt, tem, 0, 0, Qnil))
-	return tail;
-    }
-  CHECK_LIST_END (tail, list);
-  return Qnil;
-}
-
-DEFUN ("assq", Fassq, Sassq, 2, 2, 0,
-       doc: /* Return non-nil if KEY is `eq' to the car of an element of LIST.
-The value is actually the first element of LIST whose car is KEY.
-Elements of LIST that are not conses are ignored.  */)
-  (Lisp_Object key, Lisp_Object list)
-{
-  Lisp_Object tail = list;
-  FOR_EACH_TAIL (tail)
-    if (CONSP (XCAR (tail)) && EQ (XCAR (XCAR (tail)), key))
-      return XCAR (tail);
-  CHECK_LIST_END (tail, list);
-  return Qnil;
-}
 
 /* Like Fassq but never report an error and do not allow quits.
    Use only on objects known to be non-circular lists.  */
@@ -1407,23 +1280,6 @@ assq_no_quit (Lisp_Object key, Lisp_Object list)
   for (; ! NILP (list); list = XCDR (list))
     if (CONSP (XCAR (list)) && EQ (XCAR (XCAR (list)), key))
       return XCAR (list);
-  return Qnil;
-}
-
-DEFUN ("assoc", Fassoc, Sassoc, 2, 2, 0,
-       doc: /* Return non-nil if KEY is `equal' to the car of an element of LIST.
-The value is actually the first element of LIST whose car equals KEY.  */)
-  (Lisp_Object key, Lisp_Object list)
-{
-  Lisp_Object tail = list;
-  FOR_EACH_TAIL (tail)
-    {
-      Lisp_Object car = XCAR (tail);
-      if (CONSP (car)
-	  && (EQ (XCAR (car), key) || !NILP (Fequal (XCAR (car), key))))
-	return car;
-    }
-  CHECK_LIST_END (tail, list);
   return Qnil;
 }
 
@@ -1440,36 +1296,6 @@ assoc_no_quit (Lisp_Object key, Lisp_Object list)
 	  && (EQ (XCAR (car), key) || !NILP (Fequal (XCAR (car), key))))
 	return car;
     }
-  return Qnil;
-}
-
-DEFUN ("rassq", Frassq, Srassq, 2, 2, 0,
-       doc: /* Return non-nil if KEY is `eq' to the cdr of an element of LIST.
-The value is actually the first element of LIST whose cdr is KEY.  */)
-  (Lisp_Object key, Lisp_Object list)
-{
-  Lisp_Object tail = list;
-  FOR_EACH_TAIL (tail)
-    if (CONSP (XCAR (tail)) && EQ (XCDR (XCAR (tail)), key))
-      return XCAR (tail);
-  CHECK_LIST_END (tail, list);
-  return Qnil;
-}
-
-DEFUN ("rassoc", Frassoc, Srassoc, 2, 2, 0,
-       doc: /* Return non-nil if KEY is `equal' to the cdr of an element of LIST.
-The value is actually the first element of LIST whose cdr equals KEY.  */)
-  (Lisp_Object key, Lisp_Object list)
-{
-  Lisp_Object tail = list;
-  FOR_EACH_TAIL (tail)
-    {
-      Lisp_Object car = XCAR (tail);
-      if (CONSP (car)
-	  && (EQ (XCDR (car), key) || !NILP (Fequal (XCDR (car), key))))
-	return car;
-    }
-  CHECK_LIST_END (tail, list);
   return Qnil;
 }
 
@@ -2613,51 +2439,6 @@ advisable.  */)
   return ret;
 }
 
-DEFUN ("featurep", Ffeaturep, Sfeaturep, 1, 2, 0,
-       doc: /* Return t if FEATURE is present in this Emacs.
-
-Use this to conditionalize execution of lisp code based on the
-presence or absence of Emacs or environment extensions.
-Use `provide' to declare that a feature is available.  This function
-looks at the value of the variable `features'.  The optional argument
-SUBFEATURE can be used to check a specific subfeature of FEATURE.  */)
-  (Lisp_Object feature, Lisp_Object subfeature)
-{
-  register Lisp_Object tem;
-  CHECK_SYMBOL (feature);
-  tem = Fmemq (feature, Vfeatures);
-  if (!NILP (tem) && !NILP (subfeature))
-    tem = Fmember (subfeature, Fget (feature, Qsubfeatures));
-  return (NILP (tem)) ? Qnil : Qt;
-}
-
-DEFUN ("provide", Fprovide, Sprovide, 1, 2, 0,
-       doc: /* Announce that FEATURE is a feature of the current Emacs.
-The optional argument SUBFEATURES should be a list of symbols listing
-particular subfeatures supported in this version of FEATURE.  */)
-  (Lisp_Object feature, Lisp_Object subfeatures)
-{
-  register Lisp_Object tem;
-  CHECK_SYMBOL (feature);
-  CHECK_LIST (subfeatures);
-  if (!NILP (Vautoload_queue))
-    Vautoload_queue = Fcons (Fcons (make_number (0), Vfeatures),
-			     Vautoload_queue);
-  tem = Fmemq (feature, Vfeatures);
-  if (NILP (tem))
-    Vfeatures = Fcons (feature, Vfeatures);
-  if (!NILP (subfeatures))
-    Fput (feature, Qsubfeatures, subfeatures);
-  LOADHIST_ATTACH (Fcons (Qprovide, feature));
-
-  /* Run any load-hooks for this file.  */
-  tem = Fassq (feature, Vafter_load_alist);
-  if (CONSP (tem))
-    Fmapc (Qfuncall, XCDR (tem));
-
-  return feature;
-}
-
 /* `require' and its subroutines.  */
 
 /* List of features currently being require'd, innermost first.  */
@@ -2768,87 +2549,6 @@ suppressed.  */)
   return feature;
 }
 
-/* Primitives for work of the "widget" library.
-   In an ideal world, this section would not have been necessary.
-   However, lisp function calls being as slow as they are, it turns
-   out that some functions in the widget library (wid-edit.el) are the
-   bottleneck of Widget operation.  Here is their translation to C,
-   for the sole reason of efficiency.  */
-
-DEFUN ("plist-member", Fplist_member, Splist_member, 2, 2, 0,
-       doc: /* Return non-nil if PLIST has the property PROP.
-PLIST is a property list, which is a list of the form
-\(PROP1 VALUE1 PROP2 VALUE2 ...).  PROP is a symbol.
-Unlike `plist-get', this allows you to distinguish between a missing
-property and a property with the value nil.
-The value is actually the tail of PLIST whose car is PROP.  */)
-  (Lisp_Object plist, Lisp_Object prop)
-{
-  Lisp_Object tail = plist;
-  FOR_EACH_TAIL (tail)
-    {
-      if (EQ (XCAR (tail), prop))
-	return tail;
-      tail = XCDR (tail);
-      if (! CONSP (tail))
-	break;
-      if (EQ (tail, li.tortoise))
-	circular_list (tail);
-    }
-  CHECK_LIST_END (tail, plist);
-  return Qnil;
-}
-
-DEFUN ("widget-put", Fwidget_put, Swidget_put, 3, 3, 0,
-       doc: /* In WIDGET, set PROPERTY to VALUE.
-The value can later be retrieved with `widget-get'.  */)
-  (Lisp_Object widget, Lisp_Object property, Lisp_Object value)
-{
-  CHECK_CONS (widget);
-  XSETCDR (widget, Fplist_put (XCDR (widget), property, value));
-  return value;
-}
-
-DEFUN ("widget-get", Fwidget_get, Swidget_get, 2, 2, 0,
-       doc: /* In WIDGET, get the value of PROPERTY.
-The value could either be specified when the widget was created, or
-later with `widget-put'.  */)
-  (Lisp_Object widget, Lisp_Object property)
-{
-  Lisp_Object tmp;
-
-  while (1)
-    {
-      if (NILP (widget))
-	return Qnil;
-      CHECK_CONS (widget);
-      tmp = Fplist_member (XCDR (widget), property);
-      if (CONSP (tmp))
-	{
-	  tmp = XCDR (tmp);
-	  return CAR (tmp);
-	}
-      tmp = XCAR (widget);
-      if (NILP (tmp))
-	return Qnil;
-      widget = Fget (tmp, Qwidget_type);
-    }
-}
-
-DEFUN ("widget-apply", Fwidget_apply, Swidget_apply, 2, MANY, 0,
-       doc: /* Apply the value of WIDGET's PROPERTY to the widget itself.
-ARGS are passed as extra arguments to the function.
-usage: (widget-apply WIDGET PROPERTY &rest ARGS)  */)
-  (ptrdiff_t nargs, Lisp_Object *args)
-{
-  Lisp_Object widget = args[0];
-  Lisp_Object property = args[1];
-  Lisp_Object propval = Fwidget_get (widget, property);
-  Lisp_Object trailing_args = Flist (nargs - 2, args + 2);
-  Lisp_Object result = CALLN (Fapply, propval, widget, trailing_args);
-  return result;
-}
-
 #ifdef HAVE_LANGINFO_CODESET
 #include <langinfo.h>
 #endif
@@ -5070,7 +4770,6 @@ that disables the use of a file dialog, regardless of the value of
 this variable.  */);
   use_file_dialog = 1;
 
-  defsubr (&Sidentity);
   defsubr (&Srandom);
   defsubr (&Slength);
   defsubr (&Ssafe_length);
@@ -5091,19 +4790,8 @@ this variable.  */);
   defsubr (&Sstring_as_unibyte);
   defsubr (&Sstring_to_multibyte);
   defsubr (&Sstring_to_unibyte);
-  defsubr (&Scopy_alist);
   defsubr (&Ssubstring);
   defsubr (&Ssubstring_no_properties);
-  defsubr (&Snthcdr);
-  defsubr (&Snth);
-  defsubr (&Selt);
-  defsubr (&Smember);
-  defsubr (&Smemq);
-  defsubr (&Smemql);
-  defsubr (&Sassq);
-  defsubr (&Sassoc);
-  defsubr (&Srassq);
-  defsubr (&Srassoc);
   defsubr (&Sdelq);
   defsubr (&Sdelete);
   defsubr (&Snreverse);
@@ -5127,13 +4815,7 @@ this variable.  */);
   defsubr (&Smapconcat);
   defsubr (&Syes_or_no_p);
   defsubr (&Sload_average);
-  defsubr (&Sfeaturep);
   defsubr (&Srequire);
-  defsubr (&Sprovide);
-  defsubr (&Splist_member);
-  defsubr (&Swidget_put);
-  defsubr (&Swidget_get);
-  defsubr (&Swidget_apply);
   defsubr (&Sbase64_encode_region);
   defsubr (&Sbase64_decode_region);
   defsubr (&Sbase64_encode_string);
