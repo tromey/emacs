@@ -317,25 +317,6 @@ If the value is not a list, symmetric encryption will be used."
                  (repeat :tag "Recipient public keys"
                          (string :tag "Recipient public key"))))
 
-;; temp for debugging
-;; (unintern 'auth-source-protocols)
-;; (unintern 'auth-sources)
-;; (customize-variable 'auth-sources)
-;; (setq auth-sources nil)
-;; (format "%S" auth-sources)
-;; (customize-variable 'auth-source-protocols)
-;; (setq auth-source-protocols nil)
-;; (format "%S" auth-source-protocols)
-;; (auth-source-pick nil :host "a" :port 'imap)
-;; (auth-source-user-or-password "login" "imap.myhost.com" 'imap)
-;; (auth-source-user-or-password "password" "imap.myhost.com" 'imap)
-;; (auth-source-user-or-password-imap "login" "imap.myhost.com")
-;; (auth-source-user-or-password-imap "password" "imap.myhost.com")
-;; (auth-source-protocol-defaults 'imap)
-
-;; (let ((auth-source-debug 'debug)) (auth-source-do-debug "hello"))
-;; (let ((auth-source-debug t)) (auth-source-do-debug "hello"))
-;; (let ((auth-source-debug nil)) (auth-source-do-debug "hello"))
 (defun auth-source-do-debug (&rest msg)
   (when auth-source-debug
     (apply #'auth-source-do-warn msg)))
@@ -355,7 +336,6 @@ If the value is not a list, symmetric encryption will be used."
    msg))
 
 
-;; (auth-source-read-char-choice "enter choice? " '(?a ?b ?q))
 (defun auth-source-read-char-choice (prompt choices)
   "Read one of CHOICES by `read-char-choice', or `read-char'.
 `dropdown-list' support is disabled because it doesn't work reliably.
