@@ -373,28 +373,6 @@ with \"[a/b/c] \" if CHOICES is \(?a ?b ?c)."
         (setq k (read-char-choice full-prompt choices)))
       k)))
 
-;; (auth-source-pick nil :host "any" :port 'imap :user "joe")
-;; (auth-source-pick t :host "any" :port 'imap :user "joe")
-;; (setq auth-sources '((:source (:secrets default) :host t :port t :user "joe")
-;;                   (:source (:secrets "session") :host t :port t :user "joe")
-;;                   (:source (:secrets "Login") :host t :port t)
-;;                   (:source "~/.authinfo.gpg" :host t :port t)))
-
-;; (setq auth-sources '((:source (:secrets default) :host t :port t :user "joe")
-;;                   (:source (:secrets "session") :host t :port t :user "joe")
-;;                   (:source (:secrets "Login") :host t :port t)
-;;                   ))
-
-;; (setq auth-sources '((:source "~/.authinfo.gpg" :host t :port t)))
-
-;; (auth-source-backend-parse "myfile.gpg")
-;; (auth-source-backend-parse 'default)
-;; (auth-source-backend-parse "secrets:Login")
-;; (auth-source-backend-parse 'macos-keychain-internet)
-;; (auth-source-backend-parse 'macos-keychain-generic)
-;; (auth-source-backend-parse "macos-keychain-internet:/path/here.keychain")
-;; (auth-source-backend-parse "macos-keychain-generic:/path/here.keychain")
-
 (defun auth-source-backend-parse (entry)
   "Creates an auth-source-backend from an ENTRY in `auth-sources'."
   (auth-source-backend-parse-parameters
@@ -781,12 +759,6 @@ must call it to obtain the actual value."
             (setq matches (append matches bmatches))))))
     matches))
 
-;; (auth-source-search :max 0)
-;; (auth-source-search :max 1)
-;; (funcall (plist-get (nth 0 (auth-source-search :max 1)) :secret))
-;; (auth-source-search :host "nonesuch" :type 'netrc :K 1)
-;; (auth-source-search :host "nonesuch" :type 'secrets)
-
 (defun auth-source-delete (&rest spec)
   "Delete entries from the authentication backends according to SPEC.
 Calls `auth-source-search' with the :delete property in SPEC set to t.
@@ -886,8 +858,6 @@ while \(:host t) would find all host entries."
               (cl-return 'no)))
           'no))))
 
-;; (auth-source-pick-first-password :host "z.lifelogs.com")
-;; (auth-source-pick-first-password :port "imap")
 (defun auth-source-pick-first-password (&rest spec)
   "Pick the first secret found from applying SPEC to `auth-source-search'."
   (let* ((result (nth 0 (apply #'auth-source-search (plist-put spec :max 1))))
@@ -897,7 +867,6 @@ while \(:host t) would find all host entries."
         (funcall secret)
       secret)))
 
-;; (auth-source-format-prompt "test %u %h %p" '((?u "user") (?h "host")))
 (defun auth-source-format-prompt (prompt alist)
   "Format PROMPT using %x (for any character x) specifiers in ALIST."
   (dolist (cell alist)
@@ -1119,7 +1088,6 @@ Note that the MAX parameter is used so we can exit the parse early."
 			  (lambda () p)))
 	  passphrase))))
 
-;; (auth-source-epa-extract-gpg-token "gpg:LS0tLS1CRUdJTiBQR1AgTUVTU0FHRS0tLS0tClZlcnNpb246IEdudVBHIHYxLjQuMTEgKEdOVS9MaW51eCkKCmpBMEVBd01DT25qMjB1ak9rZnRneVI3K21iNm9aZWhuLzRad3cySkdlbnVaKzRpeEswWDY5di9icDI1U1dsQT0KPS9yc2wKLS0tLS1FTkQgUEdQIE1FU1NBR0UtLS0tLQo=" "~/.netrc")
 (defun auth-source-epa-extract-gpg-token (secret file)
   "Pass either the decoded SECRET or the gpg:BASE64DATA version.
 FILE is the file from which we obtained this token."
@@ -1134,7 +1102,6 @@ FILE is the file from which we obtained this token."
 
 (defvar pp-escape-newlines)
 
-;; (insert (auth-source-epa-make-gpg-token "mysecret" "~/.netrc"))
 (defun auth-source-epa-make-gpg-token (secret file)
   (let ((context (epg-make-context 'OpenPGP))
         (pp-escape-newlines nil)
@@ -1192,9 +1159,6 @@ FILE is the file from which we obtained this token."
                                        v))))
               ret))
           alist))
-
-;; (setq secret (plist-get (nth 0 (auth-source-search :host t :type 'netrc :K 1 :max 1)) :secret))
-;; (funcall secret)
 
 (cl-defun auth-source-netrc-search (&rest spec
                                     &key backend require create
@@ -1415,7 +1379,6 @@ See `auth-source-search' for details on SPEC."
 
     (list artificial)))
 
-;;(funcall (plist-get (nth 0 (auth-source-search :host '("nonesuch2") :user "tzz" :port "imap" :create t :max 1)) :save-function))
 (defun auth-source-netrc-saver (file add)
   "Save a line ADD in FILE, prompting along the way.
 Respects `auth-source-save-behavior'.  Uses
@@ -1495,13 +1458,6 @@ Respects `auth-source-save-behavior'.  Uses
       (auth-source--aput auth-source-netrc-cache key "ran"))))
 
 ;;; Backend specific parsing: Secrets API backend
-
-;; (let ((auth-sources '(default))) (auth-source-search :max 1 :create t))
-;; (let ((auth-sources '(default))) (auth-source-search :max 1 :delete t))
-;; (let ((auth-sources '(default))) (auth-source-search :max 1))
-;; (let ((auth-sources '(default))) (auth-source-search))
-;; (let ((auth-sources '("secrets:Login"))) (auth-source-search :max 1))
-;; (let ((auth-sources '("secrets:Login"))) (auth-source-search :max 1 :signon_realm "https://git.gnus.org/Git"))
 
 (defun auth-source-secrets-listify-pattern (pattern)
   "Convert a pattern with lists to a list of string patterns.
@@ -1629,20 +1585,6 @@ authentication tokens:
   (debug spec))
 
 ;;; Backend specific parsing: Mac OS Keychain (using /usr/bin/security) backend
-
-;; (let ((auth-sources '(macos-keychain-internet))) (auth-source-search :max 1 :create t))
-;; (let ((auth-sources '(macos-keychain-internet))) (auth-source-search :max 1 :delete t))
-;; (let ((auth-sources '(macos-keychain-internet))) (auth-source-search :max 1))
-;; (let ((auth-sources '(macos-keychain-internet))) (auth-source-search))
-
-;; (let ((auth-sources '(macos-keychain-generic))) (auth-source-search :max 1 :create t))
-;; (let ((auth-sources '(macos-keychain-generic))) (auth-source-search :max 1 :delete t))
-;; (let ((auth-sources '(macos-keychain-generic))) (auth-source-search :max 1))
-;; (let ((auth-sources '(macos-keychain-generic))) (auth-source-search))
-
-;; (let ((auth-sources '("macos-keychain-internet:/Users/tzz/Library/Keychains/login.keychain"))) (auth-source-search :max 1))
-;; (let ((auth-sources '("macos-keychain-generic:Login"))) (auth-source-search :max 1 :host "git.gnus.org"))
-;; (let ((auth-sources '("macos-keychain-generic:Login"))) (auth-source-search :max 1))
 
 (cl-defun auth-source-macos-keychain-search (&rest spec
                                              &key backend create delete type max

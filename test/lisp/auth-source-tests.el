@@ -219,5 +219,24 @@
                     ("login" . "user1")
                     ("machine" . "mymachine1"))))))
 
+(ert-deftest auth-source-test-format-prompt ()
+  (should (equal (auth-source-format-prompt "test %u %h %p" '((?u "user") (?h "host")))
+                 "test user host %p")))
+
+(ert-deftest auth-source-test-remembrances-of-things-past ()
+  (let ((password-cache t)
+        (password-data (make-vector 7 0)))
+    (auth-source-remember '(:host "wedd") '(4 5 6))
+    (should (auth-source-remembered-p '(:host "wedd")))
+    (should-not (auth-source-remembered-p '(:host "xedd")))
+    (auth-source-remember '(:host "xedd") '(1 2 3))
+    (should (auth-source-remembered-p '(:host "xedd")))
+    (should-not (auth-source-remembered-p '(:host "zedd")))
+    (should (auth-source-recall '(:host "xedd")))
+    (should-not (auth-source-recall nil))
+    (auth-source-forget+ :host t)
+    (should-not (auth-source-remembered-p '(:host "xedd")))
+    (should-not (auth-source-remembered-p '(:host t)))))
+
 (provide 'auth-source-tests)
 ;;; auth-source-tests.el ends here
