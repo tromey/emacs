@@ -335,7 +335,6 @@ If the value is not a list, symmetric encryption will be used."
      'message)
    msg))
 
-
 (defun auth-source-read-char-choice (prompt choices)
   "Read one of CHOICES by `read-char-choice', or `read-char'.
 `dropdown-list' support is disabled because it doesn't work reliably.
@@ -353,130 +352,147 @@ with \"[a/b/c] \" if CHOICES is \(?a ?b ?c)."
         (setq k (read-char-choice full-prompt choices)))
       k)))
 
+(defvar auth-source-backend-parser-functions nil
+  "List of auth-source parser functions
+These functions return backends from an entry in `auth-sources'.
+Add your backends to this list with `add-hook'.")
+
 (defun auth-source-backend-parse (entry)
   "Creates an auth-source-backend from an ENTRY in `auth-sources'."
-  (auth-source-backend-parse-parameters
-   entry
-   (cond
-    ;; take 'default and recurse to get it as a Secrets API default collection
-    ;; matching any user, host, and protocol
-    ((eq entry 'default)
-     (auth-source-backend-parse '(:source (:secrets default))))
-    ;; take secrets:XYZ and recurse to get it as Secrets API collection "XYZ"
-    ;; matching any user, host, and protocol
-    ((and (stringp entry) (string-match "^secrets:\\(.+\\)" entry))
-     (auth-source-backend-parse `(:source (:secrets ,(match-string 1 entry)))))
 
-    ;; take 'macos-keychain-internet and recurse to get it as a Mac OS
-    ;; Keychain collection matching any user, host, and protocol
-    ((eq entry 'macos-keychain-internet)
-     (auth-source-backend-parse '(:source (:macos-keychain-internet default))))
-    ;; take 'macos-keychain-generic and recurse to get it as a Mac OS
-    ;; Keychain collection matching any user, host, and protocol
-    ((eq entry 'macos-keychain-generic)
-     (auth-source-backend-parse '(:source (:macos-keychain-generic default))))
-    ;; take macos-keychain-internet:XYZ and recurse to get it as macOS
-    ;; Keychain "XYZ" matching any user, host, and protocol
-    ((and (stringp entry) (string-match "^macos-keychain-internet:\\(.+\\)"
-                                        entry))
-     (auth-source-backend-parse `(:source (:macos-keychain-internet
-                                           ,(match-string 1 entry)))))
-    ;; take macos-keychain-generic:XYZ and recurse to get it as macOS
-    ;; Keychain "XYZ" matching any user, host, and protocol
-    ((and (stringp entry) (string-match "^macos-keychain-generic:\\(.+\\)"
-                                        entry))
-     (auth-source-backend-parse `(:source (:macos-keychain-generic
-                                           ,(match-string 1 entry)))))
+  (let (backend)
+    (dolist (f auth-source-backend-parser-functions)
+      (when (setq backend (funcall f entry))
+        (return)))
 
-    ;; take just a file name and recurse to get it as a netrc file
-    ;; matching any user, host, and protocol
-    ((stringp entry)
-     (auth-source-backend-parse `(:source ,entry)))
+    (unless backend
+      ;; none of the parsers worked
+      (auth-source-do-warn
+       "auth-source-backend-parse: invalid backend spec: %S" entry)
+      (setq backend (make-instance 'auth-source-backend
+                                   :source ""
+                                   :type 'ignore)))
+    (auth-source-backend-parse-parameters entry backend)))
 
-    ;; a file name with parameters
-    ((stringp (plist-get entry :source))
-     (if (equal (file-name-extension (plist-get entry :source)) "plist")
-         (auth-source-backend
-          (plist-get entry :source)
-          :source (plist-get entry :source)
-          :type 'plstore
-          :search-function #'auth-source-plstore-search
-          :create-function #'auth-source-plstore-create
-          :data (plstore-open (plist-get entry :source)))
-       (auth-source-backend
-        (plist-get entry :source)
-        :source (plist-get entry :source)
-        :type 'netrc
-        :search-function #'auth-source-netrc-search
-        :create-function #'auth-source-netrc-create)))
+(defun auth-source-backends-parser-file (entry)
+  ;; take just a file name use it as a netrc/plist file
+  ;; matching any user, host, and protocol
+  (when (stringp entry)
+    (setq entry `(:source ,entry)))
+  (cond
+   ;; a file name with parameters
+   ((stringp (plist-get entry :source))
+    (if (equal (file-name-extension (plist-get entry :source)) "plist")
+        (auth-source-backend
+         (plist-get entry :source)
+         :source (plist-get entry :source)
+         :type 'plstore
+         :search-function #'auth-source-plstore-search
+         :create-function #'auth-source-plstore-create
+         :data (plstore-open (plist-get entry :source)))
+      (auth-source-backend
+       (plist-get entry :source)
+       :source (plist-get entry :source)
+       :type 'netrc
+       :search-function #'auth-source-netrc-search
+       :create-function #'auth-source-netrc-create)))))
 
-    ;; the macOS Keychain
-    ((and
-      (not (null (plist-get entry :source))) ; the source must not be nil
-      (listp (plist-get entry :source))      ; and it must be a list
-      (or
-       (plist-get (plist-get entry :source) :macos-keychain-generic)
-       (plist-get (plist-get entry :source) :macos-keychain-internet)))
+;; Note this function should be last in the parser functions, so we add it first
+(add-hook 'auth-source-backend-parser-functions 'auth-source-backends-parser-file)
 
-     (let* ((source-spec (plist-get entry :source))
-            (keychain-generic (plist-get source-spec :macos-keychain-generic))
-            (keychain-type (if keychain-generic
-                               'macos-keychain-generic
-                             'macos-keychain-internet))
-            (source (plist-get source-spec (if keychain-generic
-                                               :macos-keychain-generic
-                                             :macos-keychain-internet))))
+(defun auth-source-backends-parser-macos-keychain (entry)
+  ;; take macos-keychain-{internet,generic}:XYZ and use it as macOS
+  ;; Keychain "XYZ" matching any user, host, and protocol
+  (when (and (stringp entry) (string-match "^macos-keychain-internet:\\(.+\\)"
+                                           entry))
+    (setq entry `(:source (:macos-keychain-internet
+                           ,(match-string 1 entry)))))
+  (when (and (stringp entry) (string-match "^macos-keychain-generic:\\(.+\\)"
+                                           entry))
+    (setq entry `(:source (:macos-keychain-generic
+                           ,(match-string 1 entry)))))
+  ;; take 'macos-keychain-internet or generic and use it as a Mac OS
+  ;; Keychain collection matching any user, host, and protocol
+  (when (eq entry 'macos-keychain-internet)
+    (setq entry '(:source (:macos-keychain-internet default))))
+  (when (eq entry 'macos-keychain-generic)
+    (setq entry '(:source (:macos-keychain-generic default))))
+  (cond
+   ;; the macOS Keychain
+   ((and
+     (not (null (plist-get entry :source))) ; the source must not be nil
+     (listp (plist-get entry :source))      ; and it must be a list
+     (or
+      (plist-get (plist-get entry :source) :macos-keychain-generic)
+      (plist-get (plist-get entry :source) :macos-keychain-internet)))
 
-       (when (symbolp source)
-         (setq source (symbol-name source)))
+    (let* ((source-spec (plist-get entry :source))
+           (keychain-generic (plist-get source-spec :macos-keychain-generic))
+           (keychain-type (if keychain-generic
+                              'macos-keychain-generic
+                            'macos-keychain-internet))
+           (source (plist-get source-spec (if keychain-generic
+                                              :macos-keychain-generic
+                                            :macos-keychain-internet))))
 
-       (auth-source-backend
-        (format "Mac OS Keychain (%s)" source)
-        :source source
-        :type keychain-type
-        :search-function #'auth-source-macos-keychain-search
-        :create-function #'auth-source-macos-keychain-create)))
+      (when (symbolp source)
+        (setq source (symbol-name source)))
 
-    ;; the Secrets API.  We require the package, in order to have a
-    ;; defined value for `secrets-enabled'.
-    ((and
-      (not (null (plist-get entry :source))) ; the source must not be nil
-      (listp (plist-get entry :source))      ; and it must be a list
-      (require 'secrets nil t)               ; and we must load the Secrets API
-      secrets-enabled)                       ; and that API must be enabled
+      (auth-source-backend
+       (format "Mac OS Keychain (%s)" source)
+       :source source
+       :type keychain-type
+       :search-function #'auth-source-macos-keychain-search
+       :create-function #'auth-source-macos-keychain-create)))))
 
-     ;; the source is either the :secrets key in ENTRY or
-     ;; if that's missing or nil, it's "session"
-     (let ((source (or (plist-get (plist-get entry :source) :secrets)
-                       "session")))
+(add-hook 'auth-source-backend-parser-functions 'auth-source-backends-parser-macos-keychain)
 
-       ;; if the source is a symbol, we look for the alias named so,
-       ;; and if that alias is missing, we use "Login"
-       (when (symbolp source)
-         (setq source (or (secrets-get-alias (symbol-name source))
-                          "Login")))
+(defun auth-source-backends-parser-secrets (entry)
+  ;; take secrets:XYZ and use it as Secrets API collection "XYZ"
+  ;; matching any user, host, and protocol
+  (when (and (stringp entry) (string-match "^secrets:\\(.+\\)" entry))
+    (setq entry `(:source (:secrets ,(match-string 1 entry)))))
+  ;; take 'default and use it as a Secrets API default collection
+  ;; matching any user, host, and protocol
+  (when (eq entry 'default)
+    (setq entry '(:source (:secrets default))))
+  (cond
+   ;; the Secrets API.  We require the package, in order to have a
+   ;; defined value for `secrets-enabled'.
+   ((and
+     (not (null (plist-get entry :source))) ; the source must not be nil
+     (listp (plist-get entry :source))      ; and it must be a list
+     (not (null (plist-get
+                 (plist-get entry :source)
+                 :secrets))) ; the source must have :secrets
+     (require 'secrets nil t)               ; and we must load the Secrets API
+     secrets-enabled)                       ; and that API must be enabled
 
-       (if (featurep 'secrets)
-           (auth-source-backend
-            (format "Secrets API (%s)" source)
-            :source source
-            :type 'secrets
-            :search-function #'auth-source-secrets-search
-            :create-function #'auth-source-secrets-create)
-         (auth-source-do-warn
-          "auth-source-backend-parse: no Secrets API, ignoring spec: %S" entry)
-         (auth-source-backend
-          (format "Ignored Secrets API (%s)" source)
-          :source ""
-          :type 'ignore))))
+    ;; the source is either the :secrets key in ENTRY or
+    ;; if that's missing or nil, it's "session"
+    (let ((source (plist-get (plist-get entry :source) :secrets)))
 
-    ;; none of them
-    (t
-     (auth-source-do-warn
-      "auth-source-backend-parse: invalid backend spec: %S" entry)
-     (make-instance 'auth-source-backend
-      :source ""
-      :type 'ignore)))))
+      ;; if the source is a symbol, we look for the alias named so,
+      ;; and if that alias is missing, we use "Login"
+      (when (symbolp source)
+        (setq source (or (secrets-get-alias (symbol-name source))
+                         "Login")))
+
+      (if (featurep 'secrets)
+          (auth-source-backend
+           (format "Secrets API (%s)" source)
+           :source source
+           :type 'secrets
+           :search-function #'auth-source-secrets-search
+           :create-function #'auth-source-secrets-create)
+        (auth-source-do-warn
+         "auth-source-backend-parse: no Secrets API, ignoring spec: %S" entry)
+        (auth-source-backend
+         (format "Ignored Secrets API (%s)" source)
+         :source ""
+         :type 'ignore))))))
+
+(add-hook 'auth-source-backend-parser-functions 'auth-source-backends-parser-secrets)
 
 (defun auth-source-backend-parse-parameters (entry backend)
   "Fills in the extra auth-source-backend parameters of ENTRY.
@@ -795,17 +811,6 @@ Returns the deleted entries."
 This is the same SPEC you passed to `auth-source-search'.
 Returns t or nil for forgotten or not found."
   (password-cache-remove (auth-source-format-cache-entry spec)))
-
-;; (loop for sym being the symbols of password-data when (string-match (concat "^" auth-source-magic) (symbol-name sym)) collect (symbol-name sym))
-
-;; (auth-source-remember '(:host "wedd") '(4 5 6))
-;; (auth-source-remembered-p '(:host "wedd"))
-;; (auth-source-remember '(:host "xedd") '(1 2 3))
-;; (auth-source-remembered-p '(:host "xedd"))
-;; (auth-source-remembered-p '(:host "zedd"))
-;; (auth-source-recall '(:host "xedd"))
-;; (auth-source-recall '(:host t))
-;; (auth-source-forget+ :host t)
 
 (defun auth-source-forget+ (&rest spec)
   "Forget any cached data matching SPEC.  Returns forgotten count.
