@@ -39,32 +39,53 @@
   propertize
   ;; Keymap.
   keymap
-  ;; Captured local variables.
+  ;; Captured locals that are set when entering a region.
+  crucial-captured-locals
+  ;; Other captured local variables; these are not set when entering a
+  ;; region but let-bound during certain operations, e.g.,
+  ;; indentation.
   captured-locals)
 
+(defconst mhtml--crucial-variable-prefix
+  (regexp-opt '("comment-" "uncomment-" "electric-indent-"
+                "smie-" "forward-sexp-function"))
+  "Regexp matching the prefix of \"crucial\" buffer-locals we want to capture.")
+
 (defconst mhtml--variable-prefix
-  (regexp-opt '("comment-" "uncomment-" "font-lock-" "electric-indent-"
-                "smie-" "forward-sexp-function" "indent-line-function"
-                "major-mode"))
+  (regexp-opt '("font-lock-" "indent-line-function" "major-mode"))
   "Regexp matching the prefix of buffer-locals we want to capture.")
 
 (defun mhtml--construct-submode (mode &rest args)
   "A wrapper for make-mhtml--submode that computes the buffer-local variables."
   (let ((captured-locals nil)
+        (crucial-captured-locals nil)
         (submode (apply #'make-mhtml--submode args)))
     (with-temp-buffer
       (funcall mode)
       ;; Make sure font lock is all set up.
       (font-lock-set-defaults)
       (dolist (iter (buffer-local-variables))
+        (when (string-match mhtml--crucial-variable-prefix
+                            (symbol-name (car iter)))
+          (push iter crucial-captured-locals))
         (when (string-match mhtml--variable-prefix (symbol-name (car iter)))
           (push iter captured-locals)))
+      (setf (mhtml--submode-crucial-captured-locals submode)
+            crucial-captured-locals)
       (setf (mhtml--submode-captured-locals submode) captured-locals))
     submode))
 
 (defun mhtml--mark-buffer-locals (submode)
   (dolist (iter (mhtml--submode-captured-locals submode))
     (make-local-variable (car iter))))
+
+(defvar-local mhtml--crucial-variables nil
+  "List of all crucial variable symbols.")
+
+(defun mhtml--mark-crucial-buffer-locals (submode)
+  (dolist (iter (mhtml--submode-crucial-captured-locals submode))
+    (make-local-variable (car iter))
+    (push (car iter) mhtml--crucial-variables)))
 
 (defconst mhtml--css-submode
   (mhtml--construct-submode 'css-mode
@@ -87,7 +108,12 @@
   `(cl-progv
        (when submode (mapcar #'car (mhtml--submode-captured-locals submode)))
        (when submode (mapcar #'cdr (mhtml--submode-captured-locals submode)))
-     ,@body))
+     (cl-progv
+         (when submode (mapcar #'car (mhtml--submode-crucial-captured-locals
+                                      submode)))
+         (when submode (mapcar #'cdr (mhtml--submode-crucial-captured-locals
+                                      submode)))
+       ,@body)))
 
 (defun mhtml--submode-lighter ()
   "Mode-line lighter indicating the current submode."
@@ -114,6 +140,37 @@
       (mhtml--submode-fontify-one-region submode beg this-end loudly)
       (setq beg this-end))))
 
+(defvar-local mhtml--last-submode nil
+  "Record the last visited submode, so the cursor-sensor function
+can function properly.")
+
+(defvar-local mhtml--stashed-crucial-variables nil
+  "Alist of stashed values of the crucial variables.")
+
+(defun mhtml--stash-crucial-variables ()
+  (setq mhtml--stashed-crucial-variables
+        (mapcar (lambda (sym)
+                  (cons sym (buffer-local-value sym (current-buffer))))
+                mhtml--crucial-variables)))
+
+(defun mhtml--map-in-crucial-variables (alist)
+  (dolist (item alist)
+    (set (car item) (cdr item))))
+
+(defun mhtml--cursor-sensor (_window pos _action)
+  (let ((submode (get-text-property (point) 'mhtml-submode)))
+    ;; If we're entering a submode, and the previous submode was nil,
+    ;; then stash the current values first.  This lets the user at
+    ;; least modify some values directly.
+    (when (and submode (not mhtml--last-submode))
+      (mhtml--stash-crucial-variables))
+    (mhtml--map-in-crucial-variables
+     (if submode
+         (mhtml--submode-crucial-captured-locals submode)
+       mhtml--stashed-crucial-variables))
+    (setq mhtml--last-submode submode)
+    (force-mode-line-update)))
+
 (defun mhtml--syntax-propertize-submode (submode end)
   (save-excursion
     (when (search-forward (mhtml--submode-end-tag submode) end t)
@@ -126,8 +183,7 @@
                              ;; override minor mode maps.
                              'local-map (mhtml--submode-keymap submode)
                              'cursor-sensor-functions
-                             (list (lambda (_window _old-point _action)
-                                     (force-mode-line-update)))))
+                             '(mhtml--cursor-sensor)))
   (funcall (mhtml--submode-propertize submode) (point) end)
   (goto-char end))
 
@@ -175,15 +231,6 @@
       ;; HTML.
       (sgml-indent-line))))
 
-(defun mhtml--set-comment-function (sym)
-  (let ((captured-value (symbol-value sym)))
-    (set (make-local-variable sym)
-         `(lambda (&rest args)
-            (let ((submode (get-text-property (point) 'mhtml-submode))
-                  (,sym ,captured-value))
-              (mhtml--with-locals submode
-                (apply ,sym args)))))))
-
 ;;;###autoload
 (define-derived-mode mhtml-mode html-mode
   '((sgml-xml-mode "XHTML+" "HTML+") (:eval (mhtml--submode-lighter)))
@@ -203,17 +250,12 @@ the rules from `css-mode'."
   (mhtml--mark-buffer-locals mhtml--css-submode)
   (mhtml--mark-buffer-locals mhtml--js-submode)
 
-  (mhtml--set-comment-function 'comment-indent-function)
-  ;; (mhtml--set-comment-function 'comment-insert-comment-function)
-  (mhtml--set-comment-function 'comment-region-function)
-  (mhtml--set-comment-function 'uncomment-region-function)
-  (mhtml--set-comment-function 'comment-quote-nested-function)
+  (mhtml--mark-crucial-buffer-locals mhtml--css-submode)
+  (mhtml--mark-crucial-buffer-locals mhtml--js-submode)
+  (setq mhtml--crucial-variables (delete-dups mhtml--crucial-variables))
 
   ;: Hack
-  (js--update-quick-match-re)
-
-  (add-hook 'syntax-propertize-extend-region-functions
-            #'syntax-propertize-multiline 'append 'local))
+  (js--update-quick-match-re))
 
 (provide 'mhtml-mode)
 
