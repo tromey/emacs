@@ -1036,10 +1036,10 @@ be fontified with a red background."
   :type 'boolean
   :safe 'booleanp)
 
-(defun css--fontify-colors (start end)
-  "Fontify CSS colors between START and END.
-START and END are buffer positions.
-This function is used via `jit-lock-register'."
+(defun css--fontify-region (start end &optional loudly)
+  "Fontify a CSS buffer between START and END.
+START and END are buffer positions."
+  (font-lock-default-fontify-region start end loudly)
   (when css-fontify-colors
     (save-excursion
       (let ((case-fold-search t))
@@ -1330,7 +1330,7 @@ pseudo-elements, pseudo-classes, at-rules, and bang-rules."
               :backward-token #'css-smie--backward-token)
   (setq-local electric-indent-chars
               (append css-electric-keys electric-indent-chars))
-  (jit-lock-register #'css--fontify-colors)
+  (setq-local font-lock-fontify-region-function #'css--fontify-region)
   (add-hook 'completion-at-point-functions
             #'css-completion-at-point nil 'local))
 
