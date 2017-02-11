@@ -177,7 +177,6 @@
 
 (defun mhtml--set-comment-function (sym)
   (let ((captured-value (symbol-value sym)))
-    (message "GOT %S => %S" sym captured-value)
     (set (make-local-variable sym)
          `(lambda (&rest args)
             (let ((submode (get-text-property (point) 'mhtml-submode))
