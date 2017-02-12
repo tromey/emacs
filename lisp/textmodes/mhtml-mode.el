@@ -157,19 +157,19 @@ can function properly.")
   (dolist (item alist)
     (set (car item) (cdr item))))
 
-(defun mhtml--cursor-sensor (_window pos _action)
+(defun mhtml--pre-command ()
   (let ((submode (get-text-property (point) 'mhtml-submode)))
     ;; If we're entering a submode, and the previous submode was nil,
     ;; then stash the current values first.  This lets the user at
-    ;; least modify some values directly.
+    ;; least modify some values directly.  FIXME maybe always stash
+    ;; into the current mode?
     (when (and submode (not mhtml--last-submode))
       (mhtml--stash-crucial-variables))
     (mhtml--map-in-crucial-variables
      (if submode
          (mhtml--submode-crucial-captured-locals submode)
        mhtml--stashed-crucial-variables))
-    (setq mhtml--last-submode submode)
-    (force-mode-line-update)))
+    (setq mhtml--last-submode submode)))
 
 (defun mhtml--syntax-propertize-submode (submode end)
   (save-excursion
@@ -181,9 +181,7 @@ can function properly.")
                              ;; We want local-map here so that we act
                              ;; more like the sub-mode and don't
                              ;; override minor mode maps.
-                             'local-map (mhtml--submode-keymap submode)
-                             'cursor-sensor-functions
-                             '(mhtml--cursor-sensor)))
+                             'local-map (mhtml--submode-keymap submode)))
   (funcall (mhtml--submode-propertize submode) (point) end)
   (goto-char end))
 
@@ -245,6 +243,7 @@ the rules from `css-mode'."
   (setq-local syntax-propertize-function #'mhtml-syntax-propertize)
   (setq-local font-lock-fontify-region-function
               #'mhtml--submode-fontify-region)
+  (add-hook 'pre-command-hook #'mhtml--pre-command nil t)
 
   ;; Make any captured variables buffer-local.
   (mhtml--mark-buffer-locals mhtml--css-submode)
