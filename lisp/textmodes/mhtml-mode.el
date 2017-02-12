@@ -229,6 +229,12 @@ can function properly.")
       ;; HTML.
       (sgml-indent-line))))
 
+(defun mhtml--flyspell-check-word ()
+  (let ((submode (get-text-property (point) 'mhtml-submode)))
+    (if submode
+        (flyspell-generic-progmode-verify)
+      t)))
+
 ;;;###autoload
 (define-derived-mode mhtml-mode html-mode
   '((sgml-xml-mode "XHTML+" "HTML+") (:eval (mhtml--submode-lighter)))
@@ -255,6 +261,8 @@ the rules from `css-mode'."
 
   ;: Hack
   (js--update-quick-match-re))
+
+(put 'mhtml-mode 'flyspell-mode-predicate #'mhtml--flyspell-check-word)
 
 (provide 'mhtml-mode)
 
