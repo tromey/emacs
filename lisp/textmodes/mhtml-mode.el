@@ -188,23 +188,26 @@ can function properly.")
 
 (defun mhtml-syntax-propertize (start end)
   (goto-char start)
-  (when (get-text-property (point) 'mhtml-submode)
-    (mhtml--syntax-propertize-submode (get-text-property (point) 'mhtml-submode)
-                                      end))
-  (funcall
-   (syntax-propertize-rules
-    ("<style.*?>"
-     (0 (ignore
-         (goto-char (match-end 0))
-         (mhtml--syntax-propertize-submode mhtml--css-submode end))))
-    ("<script.*?>"
-     (0 (ignore
-         (goto-char (match-end 0))
-         (mhtml--syntax-propertize-submode mhtml--js-submode end))))
-    sgml-syntax-propertize-rules)
-   ;; Make sure to handle the situation where
-   ;; mhtml--syntax-propertize-submode moved point.
-   (point) end))
+  ;; Don't search in a comment or string.
+  (unless (syntax-ppss-context (syntax-ppss))
+    (when (get-text-property (point) 'mhtml-submode)
+      (mhtml--syntax-propertize-submode (get-text-property (point)
+                                                           'mhtml-submode)
+                                        end))
+    (funcall
+     (syntax-propertize-rules
+      ("<style.*?>"
+       (0 (ignore
+           (goto-char (match-end 0))
+           (mhtml--syntax-propertize-submode mhtml--css-submode end))))
+      ("<script.*?>"
+       (0 (ignore
+           (goto-char (match-end 0))
+           (mhtml--syntax-propertize-submode mhtml--js-submode end))))
+      sgml-syntax-propertize-rules)
+     ;; Make sure to handle the situation where
+     ;; mhtml--syntax-propertize-submode moved point.
+     (point) end)))
 
 (defun mhtml-indent-line ()
   "Indent the current line as HTML, JS, or CSS, according to its context."
@@ -214,8 +217,9 @@ can function properly.")
                    (get-text-property (point) 'mhtml-submode))))
     (if submode
         (save-restriction
-          (let* ((region-start (previous-single-property-change (point)
-                                                                'mhtml-submode))
+          (let* ((region-start
+                  (or (previous-single-property-change (point) 'mhtml-submode)
+                      (point)))
                  (base-indent (save-excursion
                                 (goto-char region-start)
                                 (sgml-calculate-indent))))
