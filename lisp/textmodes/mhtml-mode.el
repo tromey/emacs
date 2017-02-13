@@ -159,17 +159,18 @@ can function properly.")
 
 (defun mhtml--pre-command ()
   (let ((submode (get-text-property (point) 'mhtml-submode)))
-    ;; If we're entering a submode, and the previous submode was nil,
-    ;; then stash the current values first.  This lets the user at
-    ;; least modify some values directly.  FIXME maybe always stash
-    ;; into the current mode?
-    (when (and submode (not mhtml--last-submode))
-      (mhtml--stash-crucial-variables))
-    (mhtml--map-in-crucial-variables
-     (if submode
-         (mhtml--submode-crucial-captured-locals submode)
-       mhtml--stashed-crucial-variables))
-    (setq mhtml--last-submode submode)))
+    (unless (eq submode mhtml--last-submode)
+      ;; If we're entering a submode, and the previous submode was
+      ;; nil, then stash the current values first.  This lets the user
+      ;; at least modify some values directly.  FIXME maybe always
+      ;; stash into the current mode?
+      (when (and submode (not mhtml--last-submode))
+        (mhtml--stash-crucial-variables))
+      (mhtml--map-in-crucial-variables
+       (if submode
+           (mhtml--submode-crucial-captured-locals submode)
+         mhtml--stashed-crucial-variables))
+      (setq mhtml--last-submode submode))))
 
 (defun mhtml--syntax-propertize-submode (submode end)
   (save-excursion
@@ -249,7 +250,11 @@ the rules from `css-mode'."
   (setq-local syntax-propertize-function #'mhtml-syntax-propertize)
   (setq-local font-lock-fontify-region-function
               #'mhtml--submode-fontify-region)
+
+  ;; Attach this to both pre- and post- hooks just in case it ever
+  ;; changes a key binding that might be accessed from the menu bar.
   (add-hook 'pre-command-hook #'mhtml--pre-command nil t)
+  (add-hook 'post-command-hook #'mhtml--pre-command nil t)
 
   ;; Make any captured variables buffer-local.
   (mhtml--mark-buffer-locals mhtml--css-submode)
