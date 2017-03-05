@@ -900,7 +900,7 @@ This recognizes CSS-color-4 extensions."
     (while (< iter 4)
       (css--color-skip-blanks)
       (unless (looking-at css--number-or-percent-regexp)
-	(cl-return-from css--css-4-rgb nil))
+	(cl-return-from css--rgb-color nil))
       (let* ((is-percent (match-beginning 1))
 	     (str (match-string (if is-percent 1 2)))
 	     (number (string-to-number str)))
@@ -966,7 +966,7 @@ This recognizes CSS-color-4 extensions."
     (when (looking-at ")")
       (forward-char)
       (apply #'color-rgb-to-hex
-	     (apply #'color-hsl-to-rgb (nreverse result))))))
+	     (nconc (apply #'color-hsl-to-rgb (nreverse result)) '(2))))))
 
 (defconst css--colors-regexp
   (concat
