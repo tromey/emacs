@@ -3112,6 +3112,7 @@ extern Lisp_Object memory_signal_data;
 
 extern void maybe_quit (void);
 
+extern Lisp_Object find_handler_clause (Lisp_Object, Lisp_Object);
 extern _Noreturn void unwind_protect_continue (struct handler *);
 
 /* True if ought to quit now.  */

@@ -1450,7 +1450,6 @@ push_handler_nosignal (Lisp_Object tag_ch_val, enum handlertype handlertype)
 
 
 static Lisp_Object signal_or_quit (Lisp_Object, Lisp_Object, bool);
-static Lisp_Object find_handler_clause (Lisp_Object, Lisp_Object);
 static bool maybe_call_debugger (Lisp_Object conditions, Lisp_Object sig,
 				 Lisp_Object data);
 
@@ -1793,7 +1792,7 @@ maybe_call_debugger (Lisp_Object conditions, Lisp_Object sig, Lisp_Object data)
   return 0;
 }
 
-static Lisp_Object
+Lisp_Object
 find_handler_clause (Lisp_Object handlers, Lisp_Object conditions)
 {
   register Lisp_Object h;
