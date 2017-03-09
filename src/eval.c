@@ -1119,11 +1119,16 @@ internal_catch (Lisp_Object tag,
    This is used for correct unwinding in Fthrow and Fsignal.  */
 
 static _Noreturn void
-unwind_to_catch (struct handler *catch, Lisp_Object value)
+unwind_to_catch (struct handler *catch, enum handlertype newtype,
+		 Lisp_Object value)
 {
   bool last_time;
 
   eassert (catch->next);
+
+  /* Save the type.  */
+  eassert (newtype == CATCHER || newtype == CONDITION_CASE);
+  catch->type = newtype;
 
   /* Save the value in the tag.  */
   catch->val = value;
@@ -1162,9 +1167,9 @@ Both TAG and VALUE are evalled.  */
     for (c = handlerlist; c; c = c->next)
       {
 	if (c->type == CATCHER_ALL)
-          unwind_to_catch (c, Fcons (tag, value));
-	if (c->type == CATCHER && EQ (c->tag_or_ch, tag))
-	  unwind_to_catch (c, value);
+          unwind_to_catch (c, CATCHER, Fcons (tag, value));
+	else if (c->type == CATCHER && EQ (c->tag_or_ch, tag))
+	  unwind_to_catch (c, CATCHER, value);
       }
   xsignal2 (Qno_catch, tag, value);
 }
@@ -1572,6 +1577,12 @@ signal_or_quit (Lisp_Object error_symbol, Lisp_Object data, bool keyboard_quit)
 
   for (h = handlerlist; h; h = h->next)
     {
+      if (h->type == CATCHER_ALL)
+	{
+	  /* Any value will do.  */
+	  clause = Qt;
+	  break;
+	}
       if (h->type != CONDITION_CASE)
 	continue;
       clause = find_handler_clause (h->tag_or_ch, conditions);
@@ -1605,7 +1616,7 @@ signal_or_quit (Lisp_Object error_symbol, Lisp_Object data, bool keyboard_quit)
       Lisp_Object unwind_data
 	= (NILP (error_symbol) ? data : Fcons (error_symbol, data));
 
-      unwind_to_catch (h, unwind_data);
+      unwind_to_catch (h, CONDITION_CASE, unwind_data);
     }
   else
     {

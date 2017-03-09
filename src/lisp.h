@@ -3070,7 +3070,10 @@ SPECPDL_INDEX (void)
    hold VAL while the stack is unwound; `val' is returned as the value
    of the catch form.  If there is a handler of type CATCHER_ALL, it will
    be treated as a handler for all invocations of `throw'; in this case
-   `val' will be set to (TAG . VAL).
+   `val' will be set to (TAG . VAL).  This will also be used for all
+   invocations of `signal'.  In both cases the `type' field will be
+   reset to either CATCHER or CONDITION_CASE, depending on the kind of
+   unwind being done.
 
    All the other members are concerned with restoring the interpreter
    state.
