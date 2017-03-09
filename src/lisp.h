@@ -3112,6 +3112,8 @@ extern Lisp_Object memory_signal_data;
 
 extern void maybe_quit (void);
 
+extern _Noreturn void unwind_protect_continue (struct handler *);
+
 /* True if ought to quit now.  */
 
 #define QUITP (!NILP (Vquit_flag) && NILP (Vinhibit_quit))

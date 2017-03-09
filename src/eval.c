@@ -1688,6 +1688,14 @@ signal_error (const char *s, Lisp_Object arg)
   xsignal (Qerror, Fcons (build_string (s), arg));
 }
 
+void
+unwind_protect_continue (struct handler *h)
+{
+  eassert (h->type == CATCHER || h->type == CONDITION_CASE);
+  if (h->type == CATCHER)
+    Fthrow (XCAR (h->val), XCDR (h->val));
+  Fsignal (XCAR (h->val), XCDR (h->val));
+}
 
 /* Return true if LIST is a non-nil atom or
    a list containing one of CONDITIONS.  */
