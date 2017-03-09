@@ -961,7 +961,10 @@ module_handle_signal_or_throw (emacs_env *env, enum handlertype type,
 {
   eassert (type == CATCHER || type == CONDITION_CASE);
   if (type == CONDITION_CASE)
-    module_non_local_exit_signal_1 (env, XCAR (err), XCDR (err));
+    {
+      err = XCDR (err);
+      module_non_local_exit_signal_1 (env, XCAR (err), XCDR (err));
+    }
   else
     module_non_local_exit_throw_1 (env, XCAR (tag_val), XCDR (tag_val));
 }

@@ -1616,6 +1616,9 @@ signal_or_quit (Lisp_Object error_symbol, Lisp_Object data, bool keyboard_quit)
       Lisp_Object unwind_data
 	= (NILP (error_symbol) ? data : Fcons (error_symbol, data));
 
+      if (h->type == CATCHER_ALL)
+	unwind_data = Fcons (conditions, unwind_data);
+
       unwind_to_catch (h, CONDITION_CASE, unwind_data);
     }
   else
