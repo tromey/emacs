@@ -47,14 +47,6 @@ enum equal_kind { EQUAL_NO_QUIT, EQUAL_PLAIN, EQUAL_INCLUDING_PROPERTIES };
 static bool internal_equal (Lisp_Object, Lisp_Object,
 			    enum equal_kind, int, Lisp_Object);
 
-DEFUN ("identity", Fidentity, Sidentity, 1, 1, 0,
-       doc: /* Return the argument unchanged.  */
-       attributes: const)
-  (Lisp_Object arg)
-{
-  return arg;
-}
-
 DEFUN ("random", Frandom, Srandom, 0, 1, 0,
        doc: /* Return a pseudo-random number.
 All integers representable in Lisp, i.e. between `most-negative-fixnum'
@@ -5219,7 +5211,6 @@ that disables the use of a file dialog, regardless of the value of
 this variable.  */);
   use_file_dialog = 1;
 
-  defsubr (&Sidentity);
   defsubr (&Srandom);
   defsubr (&Slength);
   defsubr (&Ssafe_length);
