@@ -2882,20 +2882,6 @@ later with `widget-put'.  */)
     }
 }
 
-DEFUN ("widget-apply", Fwidget_apply, Swidget_apply, 2, MANY, 0,
-       doc: /* Apply the value of WIDGET's PROPERTY to the widget itself.
-ARGS are passed as extra arguments to the function.
-usage: (widget-apply WIDGET PROPERTY &rest ARGS)  */)
-  (ptrdiff_t nargs, Lisp_Object *args)
-{
-  Lisp_Object widget = args[0];
-  Lisp_Object property = args[1];
-  Lisp_Object propval = Fwidget_get (widget, property);
-  Lisp_Object trailing_args = Flist (nargs - 2, args + 2);
-  Lisp_Object result = CALLN (Fapply, propval, widget, trailing_args);
-  return result;
-}
-
 #ifdef HAVE_LANGINFO_CODESET
 #include <langinfo.h>
 #endif
@@ -5262,7 +5248,6 @@ this variable.  */);
   defsubr (&Sprovide);
   defsubr (&Splist_member);
   defsubr (&Swidget_get);
-  defsubr (&Swidget_apply);
   defsubr (&Sbase64_encode_region);
   defsubr (&Sbase64_decode_region);
   defsubr (&Sbase64_encode_string);
