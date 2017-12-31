@@ -2856,16 +2856,6 @@ The value is actually the tail of PLIST whose car is PROP.  */)
   return Qnil;
 }
 
-DEFUN ("widget-put", Fwidget_put, Swidget_put, 3, 3, 0,
-       doc: /* In WIDGET, set PROPERTY to VALUE.
-The value can later be retrieved with `widget-get'.  */)
-  (Lisp_Object widget, Lisp_Object property, Lisp_Object value)
-{
-  CHECK_CONS (widget);
-  XSETCDR (widget, Fplist_put (XCDR (widget), property, value));
-  return value;
-}
-
 DEFUN ("widget-get", Fwidget_get, Swidget_get, 2, 2, 0,
        doc: /* In WIDGET, get the value of PROPERTY.
 The value could either be specified when the widget was created, or
@@ -5271,7 +5261,6 @@ this variable.  */);
   defsubr (&Srequire);
   defsubr (&Sprovide);
   defsubr (&Splist_member);
-  defsubr (&Swidget_put);
   defsubr (&Swidget_get);
   defsubr (&Swidget_apply);
   defsubr (&Sbase64_encode_region);
