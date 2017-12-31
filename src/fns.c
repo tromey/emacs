@@ -1324,14 +1324,6 @@ DEFUN ("nthcdr", Fnthcdr, Snthcdr, 2, 2, 0,
   return tail;
 }
 
-DEFUN ("nth", Fnth, Snth, 2, 2, 0,
-       doc: /* Return the Nth element of LIST.
-N counts from zero.  If LIST is not that long, nil is returned.  */)
-  (Lisp_Object n, Lisp_Object list)
-{
-  return Fcar (Fnthcdr (n, list));
-}
-
 DEFUN ("elt", Felt, Selt, 2, 2, 0,
        doc: /* Return element of SEQUENCE at index N.  */)
   (register Lisp_Object sequence, Lisp_Object n)
@@ -5211,7 +5203,6 @@ this variable.  */);
   defsubr (&Ssubstring);
   defsubr (&Ssubstring_no_properties);
   defsubr (&Snthcdr);
-  defsubr (&Snth);
   defsubr (&Selt);
   defsubr (&Smember);
   defsubr (&Smemq);

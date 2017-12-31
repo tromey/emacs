@@ -4,6 +4,11 @@
   "Return the argument unchanged."
   arg)
 
+(defun nth (n list)
+  "Return the Nth element of LIST.
+N counts from zero.  If LIST is not that long, nil is returned."
+  (car (nthcdr n list)))
+
 (defun widget-put (widget property value)
   "In WIDGET, set PROPERTY to VALUE.
 The value can later be retrieved with `widget-get'."
