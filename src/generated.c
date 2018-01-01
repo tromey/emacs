@@ -20,6 +20,11 @@ static Lisp_Object LQsymbol;
 static Lisp_Object LQfeature;
 static Lisp_Object LQsignal;
 static Lisp_Object LQwrong_type_argument;
+static Lisp_Object LQreverse;
+static Lisp_Object LQcircular_list;
+static Lisp_Object LQvectorp;
+static Lisp_Object LQbool_vector_p;
+static Lisp_Object LQarrayp;
 static Lisp_Object LQlist;
 static Lisp_Object LQalist;
 
@@ -27,6 +32,7 @@ static Lisp_Object Kwidget_apply;
 static Lisp_Object Kwidget_get;
 static Lisp_Object Kwidget_put;
 static Lisp_Object Kfeaturep;
+static Lisp_Object Knreverse;
 static Lisp_Object Knth;
 static Lisp_Object Kcopy_alist;
 static Lisp_Object Kidentity;
@@ -36,30 +42,30 @@ DEFUN ("widget-apply", Fwidget_apply, Swidget_apply, 2, MANY,
     doc: /* Apply the value of WIDGET's PROPERTY to the widget itself.
 ARGS are passed as extra arguments to the function.
 usage: (widget-apply WIDGET PROPERTY &rest ARGS) */)
-  (ptrdiff_t nargs273, Lisp_Object *args274)
+  (ptrdiff_t nargs450, Lisp_Object *args451)
 {
   Lisp_Object widget = Qnil;
   Lisp_Object property = Qnil;
   Lisp_Object args = Qnil;
-  if (nargs273 > 0)
+  if (nargs450 > 0)
     {
-      widget = *args274++;
-      --nargs273;
+      widget = *args451++;
+      --nargs450;
     }
-  if (nargs273 > 0)
+  if (nargs450 > 0)
     {
-      property = *args274++;
-      --nargs273;
+      property = *args451++;
+      --nargs450;
     }
-  args = Flist (nargs273, args274);
+  args = Flist (nargs450, args451);
   struct handler prev_handler;
-  Lisp_Object G270_271;
-  Lisp_Object G269_272;
+  Lisp_Object G447_448;
+  Lisp_Object G446_449;
 
 BB_0:
-  G270_271 = Ffuncall (3, ((Lisp_Object[]) { LQwidget_get, widget, property }));
-  G269_272 = Fapply (3, ((Lisp_Object[]) { G270_271, widget, args }));
-  return G269_272;
+  G447_448 = Ffuncall (3, ((Lisp_Object[]) { LQwidget_get, widget, property }));
+  G446_449 = Fapply (3, ((Lisp_Object[]) { G447_448, widget, args }));
+  return G446_449;
 }
 
 DEFUN ("widget-get", Fwidget_get, Swidget_get, 2, 2,
@@ -70,31 +76,31 @@ later with `widget-put'. */)
   (Lisp_Object widget, Lisp_Object property)
 {
   struct handler prev_handler;
-  Lisp_Object G167_174;
-  Lisp_Object widget_175;
-  Lisp_Object property_176;
-  Lisp_Object G167_177;
+  Lisp_Object G344_351;
+  Lisp_Object widget_352;
+  Lisp_Object property_353;
+  Lisp_Object G344_354;
   struct handler *h1;
-  Lisp_Object G170_207;
-  Lisp_Object tmp_209;
-  Lisp_Object G171_210;
-  Lisp_Object tmp_263;
-  Lisp_Object G172_264;
-  Lisp_Object G167_193;
-  Lisp_Object G167_267;
-  Lisp_Object tmp_229;
-  Lisp_Object widget_250;
-  Lisp_Object G167_257;
-  Lisp_Object G167_268;
+  Lisp_Object G347_384;
+  Lisp_Object tmp_386;
+  Lisp_Object G348_387;
+  Lisp_Object tmp_440;
+  Lisp_Object G349_441;
+  Lisp_Object G344_370;
+  Lisp_Object G344_444;
+  Lisp_Object tmp_406;
+  Lisp_Object widget_427;
+  Lisp_Object G344_434;
+  Lisp_Object G344_445;
 
 BB_0:
-  G167_174 = LQnil;
-        widget_175 = widget;
-      property_176 = property;
-      G167_177 = G167_174;
+  G344_351 = LQnil;
+        widget_352 = widget;
+      property_353 = property;
+      G344_354 = G344_351;
   goto BB_4;
 BB_4:
-  if (!NILP (widget_175))
+  if (!NILP (widget_352))
     {
       goto BB_8;
     }
@@ -110,10 +116,10 @@ BB_8:
       exit_exception_handler ();
       goto BB_1;
     }
-  G170_207 = Fcdr (widget_175);
-  tmp_209 = Ffuncall (3, ((Lisp_Object[]) { LQplist_member, G170_207, property_176 }));
-  G171_210 = Fconsp (tmp_209);
-  if (!NILP (G171_210))
+  G347_384 = Fcdr (widget_352);
+  tmp_386 = Ffuncall (3, ((Lisp_Object[]) { LQplist_member, G347_384, property_353 }));
+  G348_387 = Fconsp (tmp_386);
+  if (!NILP (G348_387))
     {
       goto BB_14;
     }
@@ -122,19 +128,19 @@ BB_8:
       goto BB_13;
     };
 BB_14:
-  tmp_263 = XCDR (tmp_209);
-  G172_264 = Fcar (tmp_263);
-        G167_193 = G172_264;
+  tmp_440 = XCDR (tmp_386);
+  G349_441 = Fcar (tmp_440);
+        G344_370 = G349_441;
   goto BB_2;
 BB_2:
-  return G167_193;
+  return G344_370;
 BB_1:
-  G167_267 = catch_value (&prev_handler);
-        G167_193 = G167_267;
+  G344_444 = catch_value (&prev_handler);
+        G344_370 = G344_444;
   goto BB_2;
 BB_13:
-  tmp_229 = Fcar (widget_175);
-  if (!NILP (tmp_229))
+  tmp_406 = Fcar (widget_352);
+  if (!NILP (tmp_406))
     {
       goto BB_18;
     }
@@ -143,18 +149,18 @@ BB_13:
       goto BB_19;
     };
 BB_18:
-  widget_250 = Fget (tmp_229, LQwidget_type);
-        widget_175 = widget_250;
-      property_176 = property_176;
-      G167_177 = G167_177;
+  widget_427 = Fget (tmp_406, LQwidget_type);
+        widget_352 = widget_427;
+      property_353 = property_353;
+      G344_354 = G344_354;
   goto BB_4;
 BB_19:
-  G167_257 = LQnil;
-        G167_193 = G167_257;
+  G344_434 = LQnil;
+        G344_370 = G344_434;
   goto BB_2;
 BB_9:
-  G167_268 = LQnil;
-        G167_193 = G167_268;
+  G344_445 = LQnil;
+        G344_370 = G344_445;
   goto BB_2;
 }
 
@@ -165,15 +171,15 @@ The value can later be retrieved with `widget-get'. */)
   (Lisp_Object widget, Lisp_Object property, Lisp_Object value)
 {
   struct handler prev_handler;
-  Lisp_Object G163_164;
-  Lisp_Object G162_165;
-  Lisp_Object G161_166;
+  Lisp_Object G340_341;
+  Lisp_Object G339_342;
+  Lisp_Object G338_343;
 
 BB_0:
-  G163_164 = Fcdr (widget);
-  G162_165 = Ffuncall (4, ((Lisp_Object[]) { LQplist_put, G163_164, property, value }));
-  G161_166 = Fsetcdr (widget, G162_165);
-  return G161_166;
+  G340_341 = Fcdr (widget);
+  G339_342 = Ffuncall (4, ((Lisp_Object[]) { LQplist_put, G340_341, property, value }));
+  G338_343 = Fsetcdr (widget, G339_342);
+  return G338_343;
 }
 
 DEFUN ("featurep", Ffeaturep, Sfeaturep, 1, 2,
@@ -188,20 +194,20 @@ SUBFEATURE can be used to check a specific subfeature of FEATURE. */)
   (Lisp_Object feature, Lisp_Object subfeature)
 {
   struct handler prev_handler;
-  Lisp_Object G81_90;
-  Lisp_Object G84_98;
-  Lisp_Object tem_99;
-  Lisp_Object tem_111;
-  Lisp_Object G88_122;
-  Lisp_Object tem_123;
-  Lisp_Object G80_160;
-  Lisp_Object G80_159;
-  Lisp_Object G80_148;
-  Lisp_Object G83_97;
+  Lisp_Object G258_267;
+  Lisp_Object G261_275;
+  Lisp_Object tem_276;
+  Lisp_Object tem_288;
+  Lisp_Object G265_299;
+  Lisp_Object tem_300;
+  Lisp_Object G257_337;
+  Lisp_Object G257_336;
+  Lisp_Object G257_325;
+  Lisp_Object G260_274;
 
 BB_0:
-  G81_90 = Fsymbolp (feature);
-  if (!NILP (G81_90))
+  G258_267 = Fsymbolp (feature);
+  if (!NILP (G258_267))
     {
       goto BB_1;
     }
@@ -210,15 +216,15 @@ BB_0:
       goto BB_2;
     };
 BB_1:
-  G84_98 = Fsymbol_value (LQfeatures);
-  tem_99 = Fmemq (feature, G84_98);
-  if (!NILP (tem_99))
+  G261_275 = Fsymbol_value (LQfeatures);
+  tem_276 = Fmemq (feature, G261_275);
+  if (!NILP (tem_276))
     {
       goto BB_6;
     }
   else
     {
-      tem_111 = tem_99;
+      tem_288 = tem_276;
       goto BB_5;
     };
 BB_6:
@@ -228,16 +234,16 @@ BB_6:
     }
   else
     {
-      tem_111 = tem_99;
+      tem_288 = tem_276;
       goto BB_5;
     };
 BB_7:
-  G88_122 = Fget (feature, LQsubfeatures);
-  tem_123 = Fmember (subfeature, G88_122);
-        tem_111 = tem_123;
+  G265_299 = Fget (feature, LQsubfeatures);
+  tem_300 = Fmember (subfeature, G265_299);
+        tem_288 = tem_300;
   goto BB_5;
 BB_5:
-  if (!NILP (tem_111))
+  if (!NILP (tem_288))
     {
       goto BB_11;
     }
@@ -246,18 +252,184 @@ BB_5:
       goto BB_9;
     };
 BB_11:
-  G80_160 = LQt;
-        G80_159 = G80_160;
+  G257_337 = LQt;
+        G257_336 = G257_337;
   goto BB_10;
 BB_10:
-  return G80_159;
+  return G257_336;
 BB_9:
-  G80_148 = LQnil;
-        G80_159 = G80_148;
+  G257_325 = LQnil;
+        G257_336 = G257_325;
   goto BB_10;
 BB_2:
-  G83_97 = Flist (3, ((Lisp_Object[]) { LQsymbol, feature, LQfeature }));
-  Ffuncall (3, ((Lisp_Object[]) { LQsignal, LQwrong_type_argument, G83_97 }));
+  G260_274 = Flist (3, ((Lisp_Object[]) { LQsymbol, feature, LQfeature }));
+  Ffuncall (3, ((Lisp_Object[]) { LQsignal, LQwrong_type_argument, G260_274 }));
+}
+
+DEFUN ("nreverse", Fnreverse, Snreverse, 1, 1,
+    0,
+    doc: /* Reverse order of items in a list, vector or string SEQ.
+If SEQ is a list, it should be nil-terminated.
+This function may destructively modify SEQ to produce the value. */)
+  (Lisp_Object seq)
+{
+  struct handler prev_handler;
+  Lisp_Object G80_150;
+  Lisp_Object G82_97;
+  Lisp_Object G80_255;
+  Lisp_Object G83_104;
+  Lisp_Object prev_203;
+  Lisp_Object seq_205;
+  Lisp_Object prev_209;
+  Lisp_Object tail_210;
+  Lisp_Object G84_211;
+  Lisp_Object next_230;
+  Lisp_Object G85_231;
+  Lisp_Object G86_113;
+  Lisp_Object size_152;
+  Lisp_Object __dotimes_limit___153;
+  Lisp_Object i_154;
+  Lisp_Object seq_155;
+  Lisp_Object size_160;
+  Lisp_Object __dotimes_limit___161;
+  Lisp_Object i_162;
+  Lisp_Object G87_163;
+  Lisp_Object tem_187;
+  Lisp_Object G89_190;
+  Lisp_Object G88_191;
+  Lisp_Object v_193;
+  Lisp_Object i_194;
+  Lisp_Object G86_124;
+  Lisp_Object G91_151;
+
+BB_0:
+  if (!NILP (seq))
+    {
+      goto BB_2;
+    }
+  else
+    {
+      G80_150 = seq;
+      goto BB_1;
+    };
+BB_2:
+  G82_97 = Fstringp (seq);
+  if (!NILP (G82_97))
+    {
+      goto BB_6;
+    }
+  else
+    {
+      goto BB_5;
+    };
+BB_6:
+  G80_255 = Ffuncall (2, ((Lisp_Object[]) { LQreverse, seq }));
+        G80_150 = G80_255;
+  goto BB_1;
+BB_1:
+  return G80_150;
+BB_5:
+  G83_104 = Fconsp (seq);
+  if (!NILP (G83_104))
+    {
+      goto BB_9;
+    }
+  else
+    {
+      goto BB_8;
+    };
+BB_9:
+  prev_203 = LQnil;
+        seq_205 = seq;
+      prev_209 = prev_203;
+      tail_210 = seq;
+  goto BB_10;
+BB_10:
+  G84_211 = Fconsp (tail_210);
+  if (!NILP (G84_211))
+    {
+      goto BB_12;
+    }
+  else
+    {
+      G80_150 = prev_209;
+      goto BB_1;
+    };
+BB_12:
+  next_230 = XCDR (tail_210);
+  G85_231 = Feq (next_230, seq_205);
+  if (!NILP (G85_231))
+    {
+      goto BB_15;
+    }
+  else
+    {
+      goto BB_14;
+    };
+BB_15:
+  Ffuncall (3, ((Lisp_Object[]) { LQsignal, LQcircular_list, seq_205 }));
+BB_14:
+  Fsetcdr (tail_210, prev_209);
+        seq_205 = seq_205;
+      prev_209 = tail_210;
+      tail_210 = next_230;
+  goto BB_10;
+BB_8:
+  G86_113 = Ffuncall (2, ((Lisp_Object[]) { LQvectorp, seq }));
+  if (!NILP (G86_113))
+    {
+      goto BB_24;
+    }
+  else
+    {
+      goto BB_22;
+    };
+BB_24:
+  size_152 = Flength (seq);
+  __dotimes_limit___153 = Fquo (2, ((Lisp_Object[]) { size_152, make_number (2) }));
+  i_154 = make_number (0);
+        seq_155 = seq;
+      size_160 = size_152;
+      __dotimes_limit___161 = __dotimes_limit___153;
+      i_162 = i_154;
+  goto BB_25;
+BB_25:
+  G87_163 = (XINT (i_162) < XINT (__dotimes_limit___161)) ? Qt : Qnil;
+  if (!NILP (G87_163))
+    {
+      goto BB_27;
+    }
+  else
+    {
+      G80_150 = seq_155;
+      goto BB_1;
+    };
+BB_27:
+  tem_187 = Faref (seq_155, i_162);
+  G89_190 = Fminus (3, ((Lisp_Object[]) { size_160, i_162, make_number (1) }));
+  G88_191 = Faref (seq_155, G89_190);
+  Faset (seq_155, i_162, G88_191);
+  v_193 = Fminus (3, ((Lisp_Object[]) { size_160, i_162, make_number (1) }));
+  Faset (seq_155, v_193, tem_187);
+  i_194 = make_number (XINT (i_162) + 1);
+        seq_155 = seq_155;
+      size_160 = size_160;
+      __dotimes_limit___161 = __dotimes_limit___161;
+      i_162 = i_194;
+  goto BB_25;
+BB_22:
+  G86_124 = Ffuncall (2, ((Lisp_Object[]) { LQbool_vector_p, seq }));
+  if (!NILP (G86_124))
+    {
+      goto BB_24;
+    }
+  else
+    {
+      goto BB_31;
+    };
+BB_31:
+  G91_151 = Flist (2, ((Lisp_Object[]) { LQarrayp, seq }));
+  Ffuncall (3, ((Lisp_Object[]) { LQsignal, LQwrong_type_argument, G91_151 }));
 }
 
 DEFUN ("nth", Fnth, Snth, 2, 2,
@@ -401,6 +573,16 @@ syms_of_generated (void)
   staticpro (&LQsignal);
   LQwrong_type_argument = intern_c_string ("wrong-type-argument");
   staticpro (&LQwrong_type_argument);
+  LQreverse = intern_c_string ("reverse");
+  staticpro (&LQreverse);
+  LQcircular_list = intern_c_string ("circular-list");
+  staticpro (&LQcircular_list);
+  LQvectorp = intern_c_string ("vectorp");
+  staticpro (&LQvectorp);
+  LQbool_vector_p = intern_c_string ("bool-vector-p");
+  staticpro (&LQbool_vector_p);
+  LQarrayp = intern_c_string ("arrayp");
+  staticpro (&LQarrayp);
   LQlist = intern_c_string ("list");
   staticpro (&LQlist);
   LQalist = intern_c_string ("alist");
@@ -414,6 +596,8 @@ syms_of_generated (void)
   XSETSUBR (Kwidget_put, &Swidget_put);
   defsubr (&Sfeaturep);
   XSETSUBR (Kfeaturep, &Sfeaturep);
+  defsubr (&Snreverse);
+  XSETSUBR (Knreverse, &Snreverse);
   defsubr (&Snth);
   XSETSUBR (Knth, &Snth);
   defsubr (&Scopy_alist);

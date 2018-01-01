@@ -24,6 +24,38 @@ Elements of ALIST that are not conses are also shared."
 N counts from zero.  If LIST is not that long, nil is returned."
   (car (nthcdr n list)))
 
+(defun nreverse (seq)
+  "Reverse order of items in a list, vector or string SEQ.
+If SEQ is a list, it should be nil-terminated.
+This function may destructively modify SEQ to produce the value."
+  (cond
+   ((null seq)
+    seq)
+   ((stringp seq)
+    (reverse seq))
+   ((consp seq)
+    (let ((prev nil)
+          (tail seq))
+      (while (consp tail)
+        (let ((next (cdr tail)))
+          ;; If SEQ contains a cycle, attempting to reverse it
+	  ;; in-place will inevitably come back to SEQ.
+          (when (eq next seq)
+            (signal 'circular-list seq))
+          (setcdr tail prev)
+          (setf prev tail)
+          (setf tail next)))
+      prev))
+   ((or (vectorp seq) (bool-vector-p seq))
+    (let ((size (length seq)))
+      (dotimes (i (/ size 2))
+        (let ((tem (aref seq i)))
+          (setf (aref seq i) (aref seq (- size i 1)))
+          (setf (aref seq (- size i 1)) tem)))
+      seq))
+   (t
+    (signal 'wrong-type-argument (list 'arrayp seq)))))
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defun featurep (feature &optional subfeature)
