@@ -24,6 +24,24 @@ Elements of ALIST that are not conses are also shared."
 N counts from zero.  If LIST is not that long, nil is returned."
   (car (nthcdr n list)))
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(defun featurep (feature &optional subfeature)
+  "Return t if FEATURE is present in this Emacs.
+
+Use this to conditionalize execution of lisp code based on the
+presence or absence of Emacs or environment extensions.
+Use `provide' to declare that a feature is available.  This function
+looks at the value of the variable `features'.  The optional argument
+SUBFEATURE can be used to check a specific subfeature of FEATURE."
+  (cl-check-type feature symbol)
+  (let ((tem (memq feature features)))
+    (and tem subfeature
+	 (setq tem (member subfeature (get feature 'subfeatures))))
+    (if tem t)))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
 (defun widget-put (widget property value)
   "In WIDGET, set PROPERTY to VALUE.
 The value can later be retrieved with `widget-get'."

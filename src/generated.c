@@ -9,14 +9,20 @@
 
 static Lisp_Object LQwidget_get;
 static Lisp_Object LQplist_put;
+static Lisp_Object LQfeatures;
+static Lisp_Object LQsubfeatures;
+static Lisp_Object LQt;
 static Lisp_Object LQnil;
-static Lisp_Object LQlist;
-static Lisp_Object LQalist;
+static Lisp_Object LQsymbol;
+static Lisp_Object LQfeature;
 static Lisp_Object LQsignal;
 static Lisp_Object LQwrong_type_argument;
+static Lisp_Object LQlist;
+static Lisp_Object LQalist;
 
 static Lisp_Object Kwidget_apply;
 static Lisp_Object Kwidget_put;
+static Lisp_Object Kfeaturep;
 static Lisp_Object Knth;
 static Lisp_Object Kcopy_alist;
 static Lisp_Object Kidentity;
@@ -26,30 +32,30 @@ DEFUN ("widget-apply", Fwidget_apply, Swidget_apply, 2, MANY,
     doc: /* Apply the value of WIDGET's PROPERTY to the widget itself.
 ARGS are passed as extra arguments to the function.
 usage: (widget-apply WIDGET PROPERTY &rest ARGS) */)
-  (ptrdiff_t nargs90, Lisp_Object *args91)
+  (ptrdiff_t nargs171, Lisp_Object *args172)
 {
   Lisp_Object widget = Qnil;
   Lisp_Object property = Qnil;
   Lisp_Object args = Qnil;
-  if (nargs90 > 0)
+  if (nargs171 > 0)
     {
-      widget = *args91++;
-      --nargs90;
+      widget = *args172++;
+      --nargs171;
     }
-  if (nargs90 > 0)
+  if (nargs171 > 0)
     {
-      property = *args91++;
-      --nargs90;
+      property = *args172++;
+      --nargs171;
     }
-  args = Flist (nargs90, args91);
+  args = Flist (nargs171, args172);
   struct handler prev_handler;
-  Lisp_Object G87_88;
-  Lisp_Object G86_89;
+  Lisp_Object G168_169;
+  Lisp_Object G167_170;
 
 BB_0:
-  G87_88 = Ffuncall (3, ((Lisp_Object[]) { LQwidget_get, widget, property }));
-  G86_89 = Fapply (3, ((Lisp_Object[]) { G87_88, widget, args }));
-  return G86_89;
+  G168_169 = Ffuncall (3, ((Lisp_Object[]) { LQwidget_get, widget, property }));
+  G167_170 = Fapply (3, ((Lisp_Object[]) { G168_169, widget, args }));
+  return G167_170;
 }
 
 DEFUN ("widget-put", Fwidget_put, Swidget_put, 3, 3,
@@ -59,15 +65,99 @@ The value can later be retrieved with `widget-get'. */)
   (Lisp_Object widget, Lisp_Object property, Lisp_Object value)
 {
   struct handler prev_handler;
-  Lisp_Object G82_83;
-  Lisp_Object G81_84;
-  Lisp_Object G80_85;
+  Lisp_Object G163_164;
+  Lisp_Object G162_165;
+  Lisp_Object G161_166;
 
 BB_0:
-  G82_83 = Fcdr (widget);
-  G81_84 = Ffuncall (4, ((Lisp_Object[]) { LQplist_put, G82_83, property, value }));
-  G80_85 = Fsetcdr (widget, G81_84);
-  return G80_85;
+  G163_164 = Fcdr (widget);
+  G162_165 = Ffuncall (4, ((Lisp_Object[]) { LQplist_put, G163_164, property, value }));
+  G161_166 = Fsetcdr (widget, G162_165);
+  return G161_166;
+}
+
+DEFUN ("featurep", Ffeaturep, Sfeaturep, 1, 2,
+    0,
+    doc: /* Return t if FEATURE is present in this Emacs.
+
+Use this to conditionalize execution of lisp code based on the
+presence or absence of Emacs or environment extensions.
+Use `provide' to declare that a feature is available.  This function
+looks at the value of the variable `features'.  The optional argument
+SUBFEATURE can be used to check a specific subfeature of FEATURE. */)
+  (Lisp_Object feature, Lisp_Object subfeature)
+{
+  struct handler prev_handler;
+  Lisp_Object G81_90;
+  Lisp_Object G84_98;
+  Lisp_Object tem_99;
+  Lisp_Object tem_111;
+  Lisp_Object G88_122;
+  Lisp_Object tem_123;
+  Lisp_Object G80_160;
+  Lisp_Object G80_159;
+  Lisp_Object G80_148;
+  Lisp_Object G83_97;
+
+BB_0:
+  G81_90 = Fsymbolp (feature);
+  if (!NILP (G81_90))
+    {
+      goto BB_1;
+    }
+  else
+    {
+      goto BB_2;
+    };
+BB_1:
+  G84_98 = Fsymbol_value (LQfeatures);
+  tem_99 = Fmemq (feature, G84_98);
+  if (!NILP (tem_99))
+    {
+      goto BB_6;
+    }
+  else
+    {
+      tem_111 = tem_99;
+      goto BB_5;
+    };
+BB_6:
+  if (!NILP (subfeature))
+    {
+      goto BB_7;
+    }
+  else
+    {
+      tem_111 = tem_99;
+      goto BB_5;
+    };
+BB_7:
+  G88_122 = Fget (feature, LQsubfeatures);
+  tem_123 = Fmember (subfeature, G88_122);
+        tem_111 = tem_123;
+  goto BB_5;
+BB_5:
+  if (!NILP (tem_111))
+    {
+      goto BB_11;
+    }
+  else
+    {
+      goto BB_9;
+    };
+BB_11:
+  G80_160 = LQt;
+        G80_159 = G80_160;
+  goto BB_10;
+BB_10:
+  return G80_159;
+BB_9:
+  G80_148 = LQnil;
+        G80_159 = G80_148;
+  goto BB_10;
+BB_2:
+  G83_97 = Flist (3, ((Lisp_Object[]) { LQsymbol, feature, LQfeature }));
+  Ffuncall (3, ((Lisp_Object[]) { LQsignal, LQwrong_type_argument, G83_97 }));
 }
 
 DEFUN ("nth", Fnth, Snth, 2, 2,
@@ -189,21 +279,33 @@ syms_of_generated (void)
   staticpro (&LQwidget_get);
   LQplist_put = intern_c_string ("plist-put");
   staticpro (&LQplist_put);
+  LQfeatures = intern_c_string ("features");
+  staticpro (&LQfeatures);
+  LQsubfeatures = intern_c_string ("subfeatures");
+  staticpro (&LQsubfeatures);
+  LQt = intern_c_string ("t");
+  staticpro (&LQt);
   LQnil = intern_c_string ("nil");
   staticpro (&LQnil);
-  LQlist = intern_c_string ("list");
-  staticpro (&LQlist);
-  LQalist = intern_c_string ("alist");
-  staticpro (&LQalist);
+  LQsymbol = intern_c_string ("symbol");
+  staticpro (&LQsymbol);
+  LQfeature = intern_c_string ("feature");
+  staticpro (&LQfeature);
   LQsignal = intern_c_string ("signal");
   staticpro (&LQsignal);
   LQwrong_type_argument = intern_c_string ("wrong-type-argument");
   staticpro (&LQwrong_type_argument);
+  LQlist = intern_c_string ("list");
+  staticpro (&LQlist);
+  LQalist = intern_c_string ("alist");
+  staticpro (&LQalist);
 
   defsubr (&Swidget_apply);
   XSETSUBR (Kwidget_apply, &Swidget_apply);
   defsubr (&Swidget_put);
   XSETSUBR (Kwidget_put, &Swidget_put);
+  defsubr (&Sfeaturep);
+  XSETSUBR (Kfeaturep, &Sfeaturep);
   defsubr (&Snth);
   XSETSUBR (Knth, &Snth);
   defsubr (&Scopy_alist);
