@@ -47,6 +47,23 @@ SUBFEATURE can be used to check a specific subfeature of FEATURE."
 The value can later be retrieved with `widget-get'."
   (setcdr widget (plist-put (cdr widget) property value)))
 
+(defun widget-get (widget property)
+  "In WIDGET, get the value of PROPERTY.
+The value could either be specified when the widget was created, or
+later with `widget-put'."
+  (catch 'done				;FIXME - lexical catch
+    (while t
+      (unless widget
+	(throw 'done nil))
+      (let ((tmp (plist-member (cdr widget) property)))
+	(when (consp tmp)
+	  (setf tmp (cdr tmp))
+	  (throw 'done (car tmp)))
+	(setf tmp (car widget))
+	(unless tmp
+	  (throw 'done nil))
+	(setf widget (get tmp 'widget-type))))))
+
 (defun widget-apply (widget property &rest args)
   "Apply the value of WIDGET's PROPERTY to the widget itself.
 ARGS are passed as extra arguments to the function.

@@ -8,11 +8,14 @@
 #define signal_value(H) (XCDR ((H)->val))
 
 static Lisp_Object LQwidget_get;
+static Lisp_Object LQnil;
+static Lisp_Object LQdone;
+static Lisp_Object LQplist_member;
+static Lisp_Object LQwidget_type;
 static Lisp_Object LQplist_put;
 static Lisp_Object LQfeatures;
 static Lisp_Object LQsubfeatures;
 static Lisp_Object LQt;
-static Lisp_Object LQnil;
 static Lisp_Object LQsymbol;
 static Lisp_Object LQfeature;
 static Lisp_Object LQsignal;
@@ -21,6 +24,7 @@ static Lisp_Object LQlist;
 static Lisp_Object LQalist;
 
 static Lisp_Object Kwidget_apply;
+static Lisp_Object Kwidget_get;
 static Lisp_Object Kwidget_put;
 static Lisp_Object Kfeaturep;
 static Lisp_Object Knth;
@@ -32,30 +36,126 @@ DEFUN ("widget-apply", Fwidget_apply, Swidget_apply, 2, MANY,
     doc: /* Apply the value of WIDGET's PROPERTY to the widget itself.
 ARGS are passed as extra arguments to the function.
 usage: (widget-apply WIDGET PROPERTY &rest ARGS) */)
-  (ptrdiff_t nargs171, Lisp_Object *args172)
+  (ptrdiff_t nargs273, Lisp_Object *args274)
 {
   Lisp_Object widget = Qnil;
   Lisp_Object property = Qnil;
   Lisp_Object args = Qnil;
-  if (nargs171 > 0)
+  if (nargs273 > 0)
     {
-      widget = *args172++;
-      --nargs171;
+      widget = *args274++;
+      --nargs273;
     }
-  if (nargs171 > 0)
+  if (nargs273 > 0)
     {
-      property = *args172++;
-      --nargs171;
+      property = *args274++;
+      --nargs273;
     }
-  args = Flist (nargs171, args172);
+  args = Flist (nargs273, args274);
   struct handler prev_handler;
-  Lisp_Object G168_169;
-  Lisp_Object G167_170;
+  Lisp_Object G270_271;
+  Lisp_Object G269_272;
 
 BB_0:
-  G168_169 = Ffuncall (3, ((Lisp_Object[]) { LQwidget_get, widget, property }));
-  G167_170 = Fapply (3, ((Lisp_Object[]) { G168_169, widget, args }));
-  return G167_170;
+  G270_271 = Ffuncall (3, ((Lisp_Object[]) { LQwidget_get, widget, property }));
+  G269_272 = Fapply (3, ((Lisp_Object[]) { G270_271, widget, args }));
+  return G269_272;
+}
+
+DEFUN ("widget-get", Fwidget_get, Swidget_get, 2, 2,
+    0,
+    doc: /* In WIDGET, get the value of PROPERTY.
+The value could either be specified when the widget was created, or
+later with `widget-put'. */)
+  (Lisp_Object widget, Lisp_Object property)
+{
+  struct handler prev_handler;
+  Lisp_Object G167_174;
+  Lisp_Object widget_175;
+  Lisp_Object property_176;
+  Lisp_Object G167_177;
+  struct handler *h1;
+  Lisp_Object G170_207;
+  Lisp_Object tmp_209;
+  Lisp_Object G171_210;
+  Lisp_Object tmp_263;
+  Lisp_Object G172_264;
+  Lisp_Object G167_193;
+  Lisp_Object G167_267;
+  Lisp_Object tmp_229;
+  Lisp_Object widget_250;
+  Lisp_Object G167_257;
+  Lisp_Object G167_268;
+
+BB_0:
+  G167_174 = LQnil;
+        widget_175 = widget;
+      property_176 = property;
+      G167_177 = G167_174;
+  goto BB_4;
+BB_4:
+  if (!NILP (widget_175))
+    {
+      goto BB_8;
+    }
+  else
+    {
+      goto BB_9;
+    };
+BB_8:
+  h1 = push_handler (LQdone, CATCHER);
+  if (sys_setjmp (h1->jmp))
+    {
+      eassert (handlerlist == h1);
+      exit_exception_handler ();
+      goto BB_1;
+    }
+  G170_207 = Fcdr (widget_175);
+  tmp_209 = Ffuncall (3, ((Lisp_Object[]) { LQplist_member, G170_207, property_176 }));
+  G171_210 = Fconsp (tmp_209);
+  if (!NILP (G171_210))
+    {
+      goto BB_14;
+    }
+  else
+    {
+      goto BB_13;
+    };
+BB_14:
+  tmp_263 = XCDR (tmp_209);
+  G172_264 = Fcar (tmp_263);
+        G167_193 = G172_264;
+  goto BB_2;
+BB_2:
+  return G167_193;
+BB_1:
+  G167_267 = catch_value (&prev_handler);
+        G167_193 = G167_267;
+  goto BB_2;
+BB_13:
+  tmp_229 = Fcar (widget_175);
+  if (!NILP (tmp_229))
+    {
+      goto BB_18;
+    }
+  else
+    {
+      goto BB_19;
+    };
+BB_18:
+  widget_250 = Fget (tmp_229, LQwidget_type);
+        widget_175 = widget_250;
+      property_176 = property_176;
+      G167_177 = G167_177;
+  goto BB_4;
+BB_19:
+  G167_257 = LQnil;
+        G167_193 = G167_257;
+  goto BB_2;
+BB_9:
+  G167_268 = LQnil;
+        G167_193 = G167_268;
+  goto BB_2;
 }
 
 DEFUN ("widget-put", Fwidget_put, Swidget_put, 3, 3,
@@ -277,6 +377,14 @@ syms_of_generated (void)
 {
   LQwidget_get = intern_c_string ("widget-get");
   staticpro (&LQwidget_get);
+  LQnil = intern_c_string ("nil");
+  staticpro (&LQnil);
+  LQdone = intern_c_string ("done");
+  staticpro (&LQdone);
+  LQplist_member = intern_c_string ("plist-member");
+  staticpro (&LQplist_member);
+  LQwidget_type = intern_c_string ("widget-type");
+  staticpro (&LQwidget_type);
   LQplist_put = intern_c_string ("plist-put");
   staticpro (&LQplist_put);
   LQfeatures = intern_c_string ("features");
@@ -285,8 +393,6 @@ syms_of_generated (void)
   staticpro (&LQsubfeatures);
   LQt = intern_c_string ("t");
   staticpro (&LQt);
-  LQnil = intern_c_string ("nil");
-  staticpro (&LQnil);
   LQsymbol = intern_c_string ("symbol");
   staticpro (&LQsymbol);
   LQfeature = intern_c_string ("feature");
@@ -302,6 +408,8 @@ syms_of_generated (void)
 
   defsubr (&Swidget_apply);
   XSETSUBR (Kwidget_apply, &Swidget_apply);
+  defsubr (&Swidget_get);
+  XSETSUBR (Kwidget_get, &Swidget_get);
   defsubr (&Swidget_put);
   XSETSUBR (Kwidget_put, &Swidget_put);
   defsubr (&Sfeaturep);
