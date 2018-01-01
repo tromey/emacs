@@ -1151,27 +1151,6 @@ an error is signaled.  */)
 }
 
 
-DEFUN ("copy-alist", Fcopy_alist, Scopy_alist, 1, 1, 0,
-       doc: /* Return a copy of ALIST.
-This is an alist which represents the same mapping from objects to objects,
-but does not share the alist structure with ALIST.
-The objects mapped (cars and cdrs of elements of the alist)
-are shared, however.
-Elements of ALIST that are not conses are also shared.  */)
-  (Lisp_Object alist)
-{
-  if (NILP (alist))
-    return alist;
-  alist = concat (1, &alist, Lisp_Cons, false);
-  for (Lisp_Object tem = alist; !NILP (tem); tem = XCDR (tem))
-    {
-      Lisp_Object car = XCAR (tem);
-      if (CONSP (car))
-	XSETCAR (tem, Fcons (XCAR (car), XCDR (car)));
-    }
-  return alist;
-}
-
 /* Check that ARRAY can have a valid subarray [FROM..TO),
    given that its size is SIZE.
    If FROM is nil, use 0; if TO is nil, use SIZE.
@@ -5199,7 +5178,6 @@ this variable.  */);
   defsubr (&Sstring_as_unibyte);
   defsubr (&Sstring_to_multibyte);
   defsubr (&Sstring_to_unibyte);
-  defsubr (&Scopy_alist);
   defsubr (&Ssubstring);
   defsubr (&Ssubstring_no_properties);
   defsubr (&Snthcdr);
