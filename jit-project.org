@@ -1,0 +1,67 @@
+* TODO make direct calls to certain functions
+  el-compilador has a list of functions that should be "ok"
+  "ok" means the user can't advise them, and they are written in C
+  we could have the compiler not indirect via Ffuncall in these cases
+  or even inline some
+  this may require a pre-pass to check that the function is some
+  constant
+* TODO does the byte-compiler optimize mapc et al to a loop?
+  seems like it should if a lambda is given
+  but do we care, since people who care about performance
+  should use cl-loop or something
+* DONE prologue could be more efficient with optional arguments
+  even if we don't adopt some other ABI
+  there could be a sequence of just assignments of Qnil to each arg
+  and branches into the sequence
+* DONE we can get rid of native_unwind_protect and just
+  have the handler check FUNCTIONP
+* TODO hoist a bunch of constants to some sort of prologue and make
+  them universally available without recreating
+  should jit-compile lambdas in the constant pool as well
+* DONE remove the "##" comment from bytecomp.el
+* DONE change how unwind-protect is handled in bytecode
+* TODO things like emit_qnil_or_qt (and similar)
+  should maybe just optimistically emit qnil, since that is just 0,
+  then load qt, reducing the number of branches
+  maybe this would let libjit emit a cmov (can it ever?  it's hard to tell)
+* DONE get_type does some shifting
+  but since we compare against constants we could just pre-shift those
+  [ this isn't a savings because we'd have to "and" anyway ]
+* TODO could we possibly have branch hinting in the jit
+  or do we need it, maybe we can just control the condition
+* DONE we could emit a single call to wrong_type_argument per function
+* DONE can we really set a slot in a pure bytecode object
+* DONE free local data
+* DONE if compilation fails mark it so we don't try again
+* DONE we need unwinder support in gdb
+  actually really just the function bounds
+  maybe implement one of the gdb jit protocols here
+  [ sent a draft of one to the libjit list ]
+* DONE see if we can just use the varargs support [no]
+* TODO we still don't free functions on GC
+  how to free a single function from a context?
+  or should we make a new context for each one?
+* DONE jit_dump requires a different #include, but this isn't documented
+* TODO maybe we want a different calling convention for some jit functions
+  like fixed args, small # args no rest args
+  could do error handling in core where it already exists
+* TODO alloc a function for each symbol and mark as re-compilable?
+  can we change the function type at these times?
+* TODO consider a subr calling convention instead
+  it would make each jit function shorter
+  and core needs it anyhow
+  could allocate a new kind of subr
+  that holds on to the bytecode vector for GC
+  make sure subrs are marked
+  this would avoid writing to pure bytecode
+* TODO it would be nice to be able to indirect calls to natives as well
+  what would it take from libjit
+* DONE simple branch-around-branch optimization is missing
+  could not reproduce this, see branch.c
+* TODO jit branches to the retq but why?
+* DONE jit has no way to perform a shift by a constant?
+* DONE jit has no way to sign extend as an instruction?
+  or is it type conversion
+* DONE is JIT_CALL_NOTHROW really correct?
+  can we tie into the exception handling system somehow
+  maybe but is there a benefit
