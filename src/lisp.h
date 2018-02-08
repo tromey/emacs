@@ -2815,7 +2815,8 @@ enum Lisp_Compiled
     COMPILED_CONSTANTS = 2,
     COMPILED_STACK_DEPTH = 3,
     COMPILED_DOC_STRING = 4,
-    COMPILED_INTERACTIVE = 5
+    COMPILED_INTERACTIVE = 5,
+    COMPILED_JIT_CODE = 6
   };
 
 /* Flag bits in a character.  These also get used in termhooks.h.
@@ -3745,7 +3746,6 @@ build_string (const char *str)
 }
 
 extern Lisp_Object pure_cons (Lisp_Object, Lisp_Object);
-extern void make_byte_code (struct Lisp_Vector *);
 extern struct Lisp_Vector *allocate_vector (EMACS_INT);
 
 /* Make an uninitialized vector for SIZE objects.  NOTE: you must
@@ -4543,6 +4543,10 @@ extern bool profiler_memory_running;
 extern void malloc_probe (size_t);
 extern void syms_of_profiler (void);
 
+/* Defined in jit.c.  */
+extern void syms_of_jit (void);
+extern void init_jit (void);
+extern void emacs_jit_compile (Lisp_Object);
 
 #ifdef DOS_NT
 /* Defined in msdos.c, w32.c.  */

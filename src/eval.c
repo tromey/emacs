@@ -29,6 +29,7 @@ along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>.  */
 #include "keyboard.h"
 #include "dispextern.h"
 #include "buffer.h"
+#include <jit/jit.h>
 
 /* CACHEABLE is ordinarily nothing, except it is 'volatile' if
    necessary to cajole GCC into not warning incorrectly that a
@@ -3016,6 +3017,25 @@ funcall_lambda (Lisp_Object fun, ptrdiff_t nargs,
 	     and constants vector yet, fetch them from the file.  */
 	  if (CONSP (AREF (fun, COMPILED_BYTECODE)))
 	    Ffetch_bytecode (fun);
+
+	  if (initialized)
+	    {
+	      struct Lisp_Vector *vec = XVECTOR (fun);
+
+	      if (vec->contents[COMPILED_JIT_CODE] == NULL)
+		emacs_jit_compile (fun);
+
+	      jit_function_t cfunc
+		= (jit_function_t) vec->contents[COMPILED_JIT_CODE];
+	      if (cfunc != NULL)
+		{
+		  typedef Lisp_Object (*fptr) (ptrdiff_t, Lisp_Object *);
+
+		  fptr closure = (fptr) jit_function_to_closure (cfunc);
+		  return closure (nargs, arg_vector);
+		}
+	    }
+
 	  return exec_byte_code (AREF (fun, COMPILED_BYTECODE),
 				 AREF (fun, COMPILED_CONSTANTS),
 				 AREF (fun, COMPILED_STACK_DEPTH),
