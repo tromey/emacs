@@ -1,3 +1,10 @@
+* TODO have to insert maybe_quit calls somewhere, probably backward branches
+  see also QUITP
+* TODO calls to make-byte-code should probably be treated specially
+  we'll need to reconstruct flow info to capture these
+  the idea then is to compile the resulting bytecode just once,
+  when compiling our method
+  and arrange for the jitted code to pass the function pointer along
 * TODO make direct calls to certain functions
   el-compilador has a list of functions that should be "ok"
   "ok" means the user can't advise them, and they are written in C
@@ -9,6 +16,13 @@
   seems like it should if a lambda is given
   but do we care, since people who care about performance
   should use cl-loop or something
+* TODO should inline some calls at hot spots
+  use a heuristic on the callee's size
+  and a heuristic on the number of calls at the call site
+  have to recompile if the callee changes
+  probably have to emit a full call as well, with a flag
+  to indicate if the callee has changed, to avoid needing
+  on stack replacement
 * DONE prologue could be more efficient with optional arguments
   even if we don't adopt some other ABI
   there could be a sequence of just assignments of Qnil to each arg
