@@ -2,7 +2,7 @@
   eassert (pc_list == NULL);
   have to free it instead
 * TODO libjit needs a .pc file so Nick Lloyd's configure patch will work
-* TODO configury must check for open_memstream
+* DONE configury must check for open_memstream
   or we need a string-based API for disassembly etc
 * TODO make sure that compiling closures isn't pathological
 * TODO have to insert maybe_quit calls somewhere, probably backward branches
