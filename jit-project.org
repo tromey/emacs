@@ -1,3 +1,10 @@
+* TODO this is wrong:
+  eassert (pc_list == NULL);
+  have to free it instead
+* TODO libjit needs a .pc file so Nick Lloyd's configure patch will work
+* TODO configury must check for open_memstream
+  or we need a string-based API for disassembly etc
+* TODO make sure that compiling closures isn't pathological
 * TODO have to insert maybe_quit calls somewhere, probably backward branches
   see also QUITP
 * TODO calls to make-byte-code should probably be treated specially
@@ -12,7 +19,21 @@
   or even inline some
   this may require a pre-pass to check that the function is some
   constant
-* TODO does the byte-compiler optimize mapc et al to a loop?
+  but consider:
+        (defun funny-call (x) (funcall (if x 'fun-a 'fun-b) x))
+  it becomes:
+    0	dup
+    1	goto-if-nil 1
+    4	constant  fun-a
+    5	goto	  2
+    8:1	constant  fun-b
+    9:2	stack-ref 1
+    10	call	  1
+    11	return
+* TODO a call to another bytecode vector could use a different ABI
+  but only if we had a second entry point in case the lambda
+  was also called some other way
+* DONE does the byte-compiler optimize mapc et al to a loop?
   seems like it should if a lambda is given
   but do we care, since people who care about performance
   should use cl-loop or something
