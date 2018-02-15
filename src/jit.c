@@ -2106,6 +2106,7 @@ DEFUN ("jit-disassemble-to-string", Fjit_disassemble_to_string,
   if (!COMPILEDP (func))
     error ("Not a byte-compiled function");
 
+#ifdef HAVE_OPEN_MEMSTREAM
   vec = XVECTOR (func);
   cfunc = (jit_function_t) vec->contents[COMPILED_JIT_CODE];
   if (cfunc == NULL)
@@ -2119,6 +2120,9 @@ DEFUN ("jit-disassemble-to-string", Fjit_disassemble_to_string,
 
   xfree (buffer);
   return str;
+#else
+  error ("Cannot disassemble JIT code in this build: open_memstream missing");
+#endif
 }
 
 void
