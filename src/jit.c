@@ -2027,6 +2027,14 @@ compile (ptrdiff_t bytestr_length, unsigned char *bytestr_data,
     fail:
       jit_function_abandon (func);
       func = NULL;
+
+      /* Be sure to clean up.  */
+      while (pc_list != NULL)
+	{
+	  struct pc_list *next = pc_list->next;
+	  xfree (pc_list);
+	  pc_list = next;
+	}
     }
 
   xfree (stack);
