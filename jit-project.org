@@ -1,7 +1,7 @@
-* TODO this is wrong:
+* DONE this is wrong:
   eassert (pc_list == NULL);
   have to free it instead
-* TODO libjit needs a .pc file so Nick Lloyd's configure patch will work
+* DONE libjit needs a .pc file so Nick Lloyd's configure patch will work
 * DONE configury must check for open_memstream
   or we need a string-based API for disassembly etc
 * TODO make sure that compiling closures isn't pathological
