@@ -18,6 +18,8 @@ along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>.  */
 
 #include <config.h>
 
+#ifdef HAVE_LIBJIT
+
 #include "lisp.h"
 #include "buffer.h"
 #include "bytecode.h"
@@ -2221,3 +2223,5 @@ init_jit (void)
 
   emacs_jit_initialized = true;
 }
+
+#endif /* HAVE_LIBJIT */

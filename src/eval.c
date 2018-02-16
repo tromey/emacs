@@ -29,7 +29,10 @@ along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>.  */
 #include "keyboard.h"
 #include "dispextern.h"
 #include "buffer.h"
+
+#ifdef HAVE_LIBJIT
 #include <jit/jit.h>
+#endif
 
 /* CACHEABLE is ordinarily nothing, except it is 'volatile' if
    necessary to cajole GCC into not warning incorrectly that a
@@ -3018,6 +3021,7 @@ funcall_lambda (Lisp_Object fun, ptrdiff_t nargs,
 	  if (CONSP (AREF (fun, COMPILED_BYTECODE)))
 	    Ffetch_bytecode (fun);
 
+#ifdef HAVE_LIBJIT
 	  if (initialized)
 	    {
 	      struct Lisp_Vector *vec = XVECTOR (fun);
@@ -3035,6 +3039,7 @@ funcall_lambda (Lisp_Object fun, ptrdiff_t nargs,
 		  return closure (nargs, arg_vector);
 		}
 	    }
+#endif /* HAVE_LIBJIT */
 
 	  return exec_byte_code (AREF (fun, COMPILED_BYTECODE),
 				 AREF (fun, COMPILED_CONSTANTS),
