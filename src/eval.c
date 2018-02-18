@@ -2820,6 +2820,11 @@ usage: (funcall FUNCTION &rest ARGUMENTS)  */)
 
   if (SUBRP (fun))
     val = funcall_subr (fun, &XSUBR (fun)->function, numargs, args + 1);
+  else if (COMPILEDP (fun)
+	   && XVECTOR (fun)->contents[COMPILED_JIT_CODE] != NULL)
+    val = funcall_subr (fun,
+			(struct subr_function *) XVECTOR (fun)->contents[COMPILED_JIT_CODE],
+			numargs, args + 1);
   else if (COMPILEDP (fun) || MODULE_FUNCTIONP (fun))
     val = funcall_lambda (fun, numargs, args + 1);
   else
@@ -3020,15 +3025,10 @@ funcall_lambda (Lisp_Object fun, ptrdiff_t nargs,
 	      if (vec->contents[COMPILED_JIT_CODE] == NULL)
 		emacs_jit_compile (fun);
 
-	      jit_function_t cfunc
-		= (jit_function_t) vec->contents[COMPILED_JIT_CODE];
-	      if (cfunc != NULL)
-		{
-		  typedef Lisp_Object (*fptr) (ptrdiff_t, Lisp_Object *);
-
-		  fptr closure = (fptr) jit_function_to_closure (cfunc);
-		  return closure (nargs, arg_vector);
-		}
+	      if (vec->contents[COMPILED_JIT_CODE] != NULL)
+		return funcall_subr (fun,
+				     (struct subr_function *) vec->contents[COMPILED_JIT_CODE],
+				     nargs, arg_vector);
 	    }
 #endif /* HAVE_LIBJIT */
 

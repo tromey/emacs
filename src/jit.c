@@ -582,7 +582,7 @@ find_hash_min_max_pc (struct Lisp_Hash_Table *htab,
   return true;
 }
 
-static jit_function_t
+static struct subr_function *
 compile (ptrdiff_t bytestr_length, unsigned char *bytestr_data,
 	 EMACS_INT stack_depth, Lisp_Object *vectorp,
 	 ptrdiff_t vector_size, Lisp_Object args_template)
@@ -602,6 +602,13 @@ compile (ptrdiff_t bytestr_length, unsigned char *bytestr_data,
 						    * sizeof (jit_label_t));
   int *stack_depths = (int *) xmalloc (bytestr_length * sizeof (int));
   jit_value_t n_args, arg_vec;
+
+  struct subr_function *result = xmalloc (sizeof (struct subr_function));
+  result->min_args = 0;
+  result->max_args = MANY;
+
+  /* On failure this will also free RESULT.  */
+  jit_function_set_meta (func, 0, result, xfree, 0);
 
   for (int i = 0; i < bytestr_length; ++i)
     {
@@ -2026,7 +2033,7 @@ compile (ptrdiff_t bytestr_length, unsigned char *bytestr_data,
       /* Boo!  */
     fail:
       jit_function_abandon (func);
-      func = NULL;
+      result = NULL;
 
       /* Be sure to clean up.  */
       while (pc_list != NULL)
@@ -2036,6 +2043,12 @@ compile (ptrdiff_t bytestr_length, unsigned char *bytestr_data,
 	  pc_list = next;
 	}
     }
+  else
+    {
+      /* FIXME bogus cast.  */
+      result->function.a0
+	= (Lisp_Object (*) (void)) jit_function_to_closure (func);
+    }
 
   xfree (stack);
   xfree (labels);
@@ -2043,7 +2056,7 @@ compile (ptrdiff_t bytestr_length, unsigned char *bytestr_data,
   xfree (stack_depths);
   eassert (pc_list == NULL);
 
-  return func;
+  return result;
 }
 
 void
@@ -2072,12 +2085,12 @@ emacs_jit_compile (Lisp_Object func)
   CHECK_NATNUM (maxdepth);
 
   jit_context_build_start (emacs_jit_context);
-  jit_function_t cfunc = compile (bytestr_length, SDATA (bytestr),
-				  XFASTINT (maxdepth) + 1,
-				  vectorp, ASIZE (vector),
-				  AREF (func, COMPILED_ARGLIST));
+  struct subr_function *subr = compile (bytestr_length, SDATA (bytestr),
+					XFASTINT (maxdepth) + 1,
+					vectorp, ASIZE (vector),
+					AREF (func, COMPILED_ARGLIST));
 
-  XVECTOR (func)->contents[COMPILED_JIT_CODE] = (Lisp_Object) cfunc;
+  XVECTOR (func)->contents[COMPILED_JIT_CODE] = (Lisp_Object) subr;
 
   jit_context_build_end (emacs_jit_context);
 }
@@ -2110,16 +2123,18 @@ DEFUN ("jit-disassemble-to-string", Fjit_disassemble_to_string,
   Lisp_Object str;
   struct Lisp_Vector *vec;
   jit_function_t cfunc;
+  struct subr_function *sfunc;
 
   if (!COMPILEDP (func))
     error ("Not a byte-compiled function");
 
 #ifdef HAVE_OPEN_MEMSTREAM
   vec = XVECTOR (func);
-  cfunc = (jit_function_t) vec->contents[COMPILED_JIT_CODE];
-  if (cfunc == NULL)
+  sfunc = (struct subr_function *) vec->contents[COMPILED_JIT_CODE];
+  if (sfunc == NULL)
     error ("Not JIT-compiled");
 
+  cfunc = jit_function_from_closure (emacs_jit_context, sfunc->function.a0);
   stream = open_memstream (&buffer, &size);
   jit_dump_function (stream, cfunc, "Function");
   fclose (stream);
