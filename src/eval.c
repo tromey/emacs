@@ -2873,7 +2873,7 @@ funcall_subr (Lisp_Object error_obj, struct subr_function *subr,
     return (subr->function.aMANY) (numargs, args);
   else
     {
-      Lisp_Object internal_argbuf[8];
+      Lisp_Object internal_argbuf[SUBR_MAX_ARGS];
       Lisp_Object *internal_args;
       if (subr->max_args > numargs)
         {
