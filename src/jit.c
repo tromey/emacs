@@ -2222,8 +2222,8 @@ init_jit (void)
 							     NULL, 0, 1);
   record_unwind_protect_signature
     = jit_type_create_signature (jit_abi_cdecl, jit_type_void, params, 2, 1);
-  void_void_signature = jit_type_create_signature (jit_abi_cdecl, jit_type_void,
-						   NULL, 0, 1);
+  void_void_signature = jit_type_create_signature (jit_abi_cdecl,
+						   jit_type_void, NULL, 0, 1);
 
   temp_output_buffer_show_signature
     = jit_type_create_signature (jit_abi_cdecl, jit_type_void_ptr,
