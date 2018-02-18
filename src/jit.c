@@ -2077,8 +2077,6 @@ emacs_jit_compile (Lisp_Object func)
 				  vectorp, ASIZE (vector),
 				  AREF (func, COMPILED_ARGLIST));
 
-  /* Set the data no matter what; this way if compilation failed, we
-     will not try it again.  */
   XVECTOR (func)->contents[COMPILED_JIT_CODE] = (Lisp_Object) cfunc;
 
   jit_context_build_end (emacs_jit_context);
