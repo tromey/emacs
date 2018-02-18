@@ -51,6 +51,8 @@ static jit_type_t void_void_signature;
 static jit_type_t push_handler_signature;
 static jit_type_t setjmp_signature;
 
+static jit_type_t subr_signature[SUBR_MAX_ARGS];
+
 static jit_type_t ptrdiff_t_type;
 
 
@@ -589,8 +591,37 @@ compile (ptrdiff_t bytestr_length, unsigned char *bytestr_data,
 {
   int type;
   struct pc_list *pc_list = NULL;
+
+  /* Note that any error before this is attached to the function must
+     free this object.  */
+  struct subr_function *result = xmalloc (sizeof (struct subr_function));
+  result->min_args = 0;
+  result->max_args = MANY;
+
+  jit_type_t function_signature = compiled_signature;
+
+  bool parse_args = true;
+  if (INTEGERP (args_template))
+    {
+      ptrdiff_t at = XINT (args_template);
+      bool rest = (at & 128) != 0;
+      int mandatory = at & 127;
+      ptrdiff_t nonrest = at >> 8;
+
+      /* Always set this correctly so that funcall_subr will do some
+	 checking for us.  */
+      result->min_args = mandatory;
+
+      if (!rest && nonrest < SUBR_MAX_ARGS)
+	{
+	  result->max_args = nonrest;
+	  function_signature = subr_signature[nonrest];
+	  parse_args = false;
+	}
+    }
+
   jit_function_t func = jit_function_create (emacs_jit_context,
-					     compiled_signature);
+					     function_signature);
   ptrdiff_t pc = 0;
   jit_value_t *stack = (jit_value_t *) xmalloc (stack_depth
 						* sizeof (jit_value_t));
@@ -602,10 +633,6 @@ compile (ptrdiff_t bytestr_length, unsigned char *bytestr_data,
 						    * sizeof (jit_label_t));
   int *stack_depths = (int *) xmalloc (bytestr_length * sizeof (int));
   jit_value_t n_args, arg_vec;
-
-  struct subr_function *result = xmalloc (sizeof (struct subr_function));
-  result->min_args = 0;
-  result->max_args = MANY;
 
   /* On failure this will also free RESULT.  */
   jit_function_set_meta (func, 0, result, xfree, 0);
@@ -632,138 +659,131 @@ compile (ptrdiff_t bytestr_length, unsigned char *bytestr_data,
   jit_label_t wtype_label = jit_label_undefined;
   jit_value_t wtype_arg = jit_value_create (func, jit_type_void_ptr);
 
-  /* Prologue.  */
-  n_args = jit_value_get_param (func, 0);
-  arg_vec = jit_value_get_param (func, 1);
-
   jit_label_t argfail = jit_label_undefined;
   bool need_argfail = false;
   jit_value_t mandatory_val, nonrest_val;
 
-  if (INTEGERP (args_template))
+  if (!parse_args)
     {
+      /* We can emit function that doesn't need to manually decipher
+	 its arguments.  */
       ptrdiff_t at = XINT (args_template);
-      bool rest = (at & 128) != 0;
-      int mandatory = at & 127;
       ptrdiff_t nonrest = at >> 8;
 
-      mandatory_val
-	= jit_value_create_long_constant (func, ptrdiff_t_type, mandatory);
-      nonrest_val
-	= jit_value_create_nint_constant (func, ptrdiff_t_type, nonrest);
+      for (ptrdiff_t i = 0; i < nonrest; ++i)
+	PUSH (jit_value_get_param (func, i));
+    }
+  else
+    {
+      /* Prologue.  */
+      n_args = jit_value_get_param (func, 0);
+      arg_vec = jit_value_get_param (func, 1);
 
-      if (mandatory == nonrest && !rest)
+      if (INTEGERP (args_template))
 	{
-	  if (mandatory > 0)
-	    {
-	      /* If there are no optional or rest arguments, we can
-		 just check equality.  */
-	      jit_value_t compare = jit_insn_ne (func, mandatory_val, n_args);
-	      jit_insn_branch_if (func, compare, &argfail);
-	      need_argfail = true;
-	    }
-	}
-      else
-	{
-	  /* If we have fewer than mandatory, error.  */
-	  if (mandatory > 0)
-	    {
-	      jit_value_t compare = jit_insn_gt (func, mandatory_val, n_args);
-	      jit_insn_branch_if (func, compare, &argfail);
-	      need_argfail = true;
-	    }
+	  ptrdiff_t at = XINT (args_template);
+	  bool rest = (at & 128) != 0;
+	  int mandatory = at & 127;
+	  ptrdiff_t nonrest = at >> 8;
+
+	  mandatory_val
+	    = jit_value_create_long_constant (func, ptrdiff_t_type, mandatory);
+	  nonrest_val
+	    = jit_value_create_nint_constant (func, ptrdiff_t_type, nonrest);
 
 	  /* If there are no rest arguments and we have more than the
-	     maximum, error.  */
+	     maximum, error.  Note that funcall_subr ensures that, no
+	     matter what, we'll never see fewer than the minimum
+	     number of arguments.  */
 	  if (!rest)
 	    {
 	      jit_value_t compare = jit_insn_gt (func, n_args, nonrest_val);
 	      jit_insn_branch_if (func, compare, &argfail);
 	      need_argfail = true;
 	    }
-	}
 
-      /* Load mandatory arguments.  */
-      for (ptrdiff_t i = 0; i < mandatory; ++i)
-	{
-	  jit_value_t loaded
-	    = jit_insn_load_relative (func, arg_vec, i * sizeof (Lisp_Object),
-				      jit_type_void_ptr);
-	  jit_insn_store (func, stack[i], loaded);
-	}
-
-      /* &optional arguments are a bit weirder since we can't refer to
-	 the appropriate stack slot by index at runtime.  */
-      if (nonrest > mandatory)
-	{
-	  jit_value_t qnil = CONSTANT (func, Qnil);
-	  jit_label_t *opt_labels
-	    = (jit_label_t *) xmalloc ((nonrest - mandatory)
-				       * sizeof (jit_label_t));
-	  jit_label_t opts_done = jit_label_undefined;
-
-	  for (ptrdiff_t i = mandatory; i < nonrest; ++i)
+	  /* Load mandatory arguments.  */
+	  for (ptrdiff_t i = 0; i < mandatory; ++i)
 	    {
-	      opt_labels[i - mandatory] = jit_label_undefined;
-
-	      jit_value_t this_arg
-		= jit_value_create_nint_constant (func, jit_type_sys_int, i);
-	      jit_value_t cmp = jit_insn_le (func, n_args, this_arg);
-	      /* If this argument wasn't found, then neither are the
-		 subsequent ones; so branch into the correct spot in a
-		 series of loads of Qnil.  */
-	      jit_insn_branch_if (func, cmp, &opt_labels[i - mandatory]);
-
 	      jit_value_t loaded
-		= jit_insn_load_relative (func, arg_vec,
-					  i * sizeof (Lisp_Object),
+		= jit_insn_load_relative (func, arg_vec, i * sizeof (Lisp_Object),
 					  jit_type_void_ptr);
 	      jit_insn_store (func, stack[i], loaded);
 	    }
 
-	  jit_insn_branch (func, &opts_done);
-
-	  for (ptrdiff_t i = mandatory; i < nonrest; ++i)
+	  /* &optional arguments are a bit weirder since we can't refer to
+	     the appropriate stack slot by index at runtime.  */
+	  if (nonrest > mandatory)
 	    {
-	      jit_insn_label (func, &opt_labels[i - mandatory]);
-	      jit_insn_store (func, stack[i], qnil);
+	      jit_value_t qnil = CONSTANT (func, Qnil);
+	      jit_label_t *opt_labels
+		= (jit_label_t *) xmalloc ((nonrest - mandatory)
+					   * sizeof (jit_label_t));
+	      jit_label_t opts_done = jit_label_undefined;
+
+	      for (ptrdiff_t i = mandatory; i < nonrest; ++i)
+		{
+		  opt_labels[i - mandatory] = jit_label_undefined;
+
+		  jit_value_t this_arg
+		    = jit_value_create_nint_constant (func, jit_type_sys_int, i);
+		  jit_value_t cmp = jit_insn_le (func, n_args, this_arg);
+		  /* If this argument wasn't found, then neither are the
+		     subsequent ones; so branch into the correct spot in a
+		     series of loads of Qnil.  */
+		  jit_insn_branch_if (func, cmp, &opt_labels[i - mandatory]);
+
+		  jit_value_t loaded
+		    = jit_insn_load_relative (func, arg_vec,
+					      i * sizeof (Lisp_Object),
+					      jit_type_void_ptr);
+		  jit_insn_store (func, stack[i], loaded);
+		}
+
+	      jit_insn_branch (func, &opts_done);
+
+	      for (ptrdiff_t i = mandatory; i < nonrest; ++i)
+		{
+		  jit_insn_label (func, &opt_labels[i - mandatory]);
+		  jit_insn_store (func, stack[i], qnil);
+		}
+
+	      jit_insn_label (func, &opts_done);
+	      xfree (opt_labels);
 	    }
 
-	  jit_insn_label (func, &opts_done);
-	  xfree (opt_labels);
+	  stack_pointer = nonrest - 1;
+
+	  /* Now handle rest arguments, if any.  */
+	  if (rest)
+	    {
+	      jit_label_t no_rest = jit_label_undefined;
+	      jit_value_t cmp = jit_insn_lt (func, nonrest_val, n_args);
+	      jit_insn_branch_if_not (func, cmp, &no_rest);
+
+	      jit_value_t vec_addr
+		= jit_insn_load_elem_address (func, arg_vec, nonrest_val,
+					      jit_type_void_ptr);
+	      jit_value_t new_args
+		= jit_insn_sub (func, n_args, nonrest_val);
+
+	      jit_value_t args[2] = { new_args, vec_addr };
+	      jit_value_t listval
+		= jit_insn_call_native (func, "list", (void *) Flist,
+					callN_signature,
+					args, 2, JIT_CALL_NOTHROW);
+	      PUSH (listval);
+	      jit_insn_branch (func, &labels[0]);
+
+	      /* Since we emitted a branch.  */
+	      --stack_pointer;
+	      jit_insn_label (func, &no_rest);
+	      jit_value_t qnil = CONSTANT (func, Qnil);
+	      PUSH (qnil);
+	    }
+
+	  /* Fall through to the main body.  */
 	}
-
-      stack_pointer = nonrest - 1;
-
-      /* Now handle rest arguments, if any.  */
-      if (rest)
-	{
-	  jit_label_t no_rest = jit_label_undefined;
-	  jit_value_t cmp = jit_insn_lt (func, nonrest_val, n_args);
-	  jit_insn_branch_if_not (func, cmp, &no_rest);
-
-	  jit_value_t vec_addr
-	    = jit_insn_load_elem_address (func, arg_vec, nonrest_val,
-					  jit_type_void_ptr);
-	  jit_value_t new_args
-	    = jit_insn_sub (func, n_args, nonrest_val);
-
-	  jit_value_t args[2] = { new_args, vec_addr };
-	  jit_value_t listval
-	    = jit_insn_call_native (func, "list", (void *) Flist,
-				    callN_signature,
-				    args, 2, JIT_CALL_NOTHROW);
-	  PUSH (listval);
-	  jit_insn_branch (func, &labels[0]);
-
-	  /* Since we emitted a branch.  */
-	  --stack_pointer;
-	  jit_insn_label (func, &no_rest);
-	  jit_value_t qnil = CONSTANT (func, Qnil);
-	  PUSH (qnil);
-	}
-
-      /* Fall through to the main body.  */
     }
 
   for (;;)
@@ -2159,7 +2179,7 @@ syms_of_jit (void)
 void
 init_jit (void)
 {
-#define LEN 4
+#define LEN SUBR_MAX_ARGS
 
   jit_type_t params[LEN];
   int i;
@@ -2177,6 +2197,11 @@ init_jit (void)
 
   for (i = 0; i < LEN; ++i)
     params[i] = jit_type_void_ptr;
+
+  for (i = 0; i < SUBR_MAX_ARGS; ++i)
+    subr_signature[i] = jit_type_create_signature (jit_abi_cdecl,
+						   jit_type_void_ptr,
+						   params, i, 1);
 
   nullary_signature = jit_type_create_signature (jit_abi_cdecl,
 						 jit_type_void_ptr, params, 0,
