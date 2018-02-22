@@ -1,3 +1,8 @@
+* TODO do some dynamic type checking for some functions
+  e.g., could inline Flength if we knew it was always called
+  for the same type object
+  could do this in the interpreter as well
+  for this to work we need a recompilation framework
 * DONE this is wrong:
   eassert (pc_list == NULL);
   have to free it instead
@@ -93,7 +98,7 @@
   what would it take from libjit
 * DONE simple branch-around-branch optimization is missing
   could not reproduce this, see branch.c
-* TODO jit branches to the retq but why?
+* DONE jit branches to the retq but why?
 * DONE jit has no way to perform a shift by a constant?
 * DONE jit has no way to sign extend as an instruction?
   or is it type conversion
