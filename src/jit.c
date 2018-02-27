@@ -137,20 +137,105 @@ compare_type (jit_function_t func, jit_value_t val, int to_be_checked)
   return jit_insn_eq (func, real_type, type_val);
 }
 
+/* If the next instruction in the stream is a conditional branch,
+   return true and compile jumps based on COMPARE.  Otherwise, return
+   false.  */
+
+static bool
+peek_condition (jit_function_t func,
+		unsigned char *bytestr_data, ptrdiff_t pc,
+		jit_value_t compare, jit_value_t dest,
+		jit_label_t *labels)
+{
+  int op = FETCH;
+
+  switch (op)
+    {
+    case Bgotoifnil:
+      op = FETCH2;
+      jit_insn_branch_if_not (func, compare, &labels[op]);
+      break;
+
+    case Bgotoifnonnil:
+      op = FETCH2;
+      jit_insn_branch_if (func, compare, &labels[op]);
+      break;
+
+    case Bgotoifnilelsepop:
+      op = FETCH2;
+      jit_insn_store (func, dest, CONSTANT (func, Qnil));
+      jit_insn_branch_if_not (func, compare, &labels[op]);
+      break;
+
+    case Bgotoifnonnilelsepop:
+      op = FETCH2;
+      jit_insn_store (func, dest, CONSTANT (func, Qt));
+      jit_insn_branch_if (func, compare, &labels[op]);
+      break;
+
+    case BRgotoifnil:
+      op = FETCH - 128;
+      op += pc;
+      jit_insn_branch_if_not (func, compare, &labels[op]);
+      break;
+
+    case BRgotoifnonnil:
+      op = FETCH - 128;
+      op += pc;
+      jit_insn_branch_if (func, compare, &labels[op]);
+      break;
+
+    case BRgotoifnilelsepop:
+      op = FETCH - 128;
+      op += pc;
+      jit_insn_store (func, dest, CONSTANT (func, Qnil));
+      jit_insn_branch_if_not (func, compare, &labels[op]);
+      break;
+
+    case BRgotoifnonnilelsepop:
+      op = FETCH - 128;
+      op += pc;
+      jit_insn_store (func, dest, CONSTANT (func, Qt));
+      jit_insn_branch_if (func, compare, &labels[op]);
+      break;
+
+    default:
+      return false;
+    }
+
+  /* This is necessary to bypass the (probably dead) code that will be
+     emitted for the branch in the main JIT loop.  */
+  jit_insn_branch (func, &labels[pc]);
+
+  return true;
+}
+
 static void
-emit_qnil_or_qt (jit_function_t func, jit_value_t compare,
-		 jit_value_t dest, jit_label_t *next_insn)
+emit_qnil_or_qt (jit_function_t func,
+		 unsigned char *bytestr_data, ptrdiff_t pc,
+		 jit_value_t compare, jit_value_t dest,
+		 jit_label_t *labels)
 {
   jit_value_t tem;
 
-  jit_label_t nil_label = jit_label_undefined;
-  jit_insn_branch_if_not (func, compare, &nil_label);
-  tem = CONSTANT (func, Qt);
-  jit_insn_store (func, dest, tem);
-  jit_insn_branch (func, next_insn);
-  jit_insn_label (func, &nil_label);
-  tem = CONSTANT (func, Qnil);
-  jit_insn_store (func, dest, tem);
+  /* Optimize the case where we see bytecode like:
+     Beq
+     Bgotoifnil [...]
+     Here, we don't actually need to load and store the `nil' or `t'
+     -- we can just branch directly based on the condition we just
+     computed.  */
+  if (!peek_condition (func, bytestr_data, pc, compare, dest, labels))
+    {
+      /* Actually must emit a load of Qt or Qnil.  */
+      jit_label_t nil_label = jit_label_undefined;
+      jit_insn_branch_if_not (func, compare, &nil_label);
+      tem = CONSTANT (func, Qt);
+      jit_insn_store (func, dest, tem);
+      jit_insn_branch (func, &labels[pc]);
+      jit_insn_label (func, &nil_label);
+      tem = CONSTANT (func, Qnil);
+      jit_insn_store (func, dest, tem);
+    }
 }
 
 static jit_value_t
@@ -881,7 +966,7 @@ compile (ptrdiff_t bytestr_length, unsigned char *bytestr_data,
 	  {
 	    jit_value_t v1 = POP;
 	    jit_value_t compare = jit_insn_eq (func, v1, TOP);
-	    emit_qnil_or_qt (func, compare, TOP, &labels[pc]);
+	    emit_qnil_or_qt (func, bytestr_data, pc, compare, TOP, labels);
 	    break;
 	  }
 
@@ -1317,21 +1402,21 @@ compile (ptrdiff_t bytestr_length, unsigned char *bytestr_data,
 	case Bsymbolp:
 	  {
 	    jit_value_t compare = compare_type (func, TOP, Lisp_Symbol);
-	    emit_qnil_or_qt (func, compare, TOP, &labels[pc]);
+	    emit_qnil_or_qt (func, bytestr_data, pc, compare, TOP, labels);
 	    break;
 	  }
 
 	case Bconsp:
 	  {
 	    jit_value_t compare = compare_type (func, TOP, Lisp_Cons);
-	    emit_qnil_or_qt (func, compare, TOP, &labels[pc]);
+	    emit_qnil_or_qt (func, bytestr_data, pc, compare, TOP, labels);
 	    break;
 	  }
 
 	case Bstringp:
 	  {
 	    jit_value_t compare = compare_type (func, TOP, Lisp_String);
-	    emit_qnil_or_qt (func, compare, TOP, &labels[pc]);
+	    emit_qnil_or_qt (func, bytestr_data, pc, compare, TOP, labels);
 	    break;
 	  }
 
@@ -1369,7 +1454,7 @@ compile (ptrdiff_t bytestr_length, unsigned char *bytestr_data,
 	case Bnot:
 	  {
 	    jit_value_t compare = eq_nil (func, TOP);
-	    emit_qnil_or_qt (func, compare, TOP, &labels[pc]);
+	    emit_qnil_or_qt (func, bytestr_data, pc, compare, TOP, labels);
 	    break;
 	  }
 
@@ -1637,7 +1722,7 @@ compile (ptrdiff_t bytestr_length, unsigned char *bytestr_data,
 	  {
 	    jit_value_t compare = COMPARE_BUFFER_INTS (pt, zv);
 	    ++stack_pointer;
-	    emit_qnil_or_qt (func, compare, TOP, &labels[pc]);
+	    emit_qnil_or_qt (func, bytestr_data, pc, compare, TOP, labels);
 	    break;
 	  }
 
@@ -1649,7 +1734,7 @@ compile (ptrdiff_t bytestr_length, unsigned char *bytestr_data,
 	  {
 	    jit_value_t compare = COMPARE_BUFFER_INTS (pt, begv);
 	    ++stack_pointer;
-	    emit_qnil_or_qt (func, compare, TOP, &labels[pc]);
+	    emit_qnil_or_qt (func, bytestr_data, pc, compare, TOP, labels);
 	    break;
 	  }
 
@@ -1874,7 +1959,7 @@ compile (ptrdiff_t bytestr_length, unsigned char *bytestr_data,
 	case Bintegerp:
 	  {
 	    jit_value_t compare = compare_integerp (func, TOP, NULL);
-	    emit_qnil_or_qt (func, compare, TOP, &labels[pc]);
+	    emit_qnil_or_qt (func, bytestr_data, pc, compare, TOP, labels);
 	    break;
 	  }
 
