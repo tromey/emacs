@@ -74,8 +74,8 @@ DEFINE (Bcall2, 042, 3, 0)						\
 DEFINE (Bcall3, 043, 4, 0)						\
 DEFINE (Bcall4, 044, 5, 0)						\
 DEFINE (Bcall5, 045, 6, 0)						\
-DEFINE (Bcall6, 046, 0, 0)						\
-DEFINE (Bcall7, 047, 0, 0)						\
+DEFINE (Bcall6, 046, -1, -1)						\
+DEFINE (Bcall7, 047, -1, -1)						\
 DEFINE (Bunbind, 050, 0, 0)						\
 DEFINE (Bunbind1, 051, 0, 0)						\
 DEFINE (Bunbind2, 052, 0, 0)						\

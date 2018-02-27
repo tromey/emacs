@@ -1,3 +1,10 @@
+* TODO switch needs prepass work
+  and we can maybe do less work in the compiler
+  for example the Bconstant handling
+* TODO on branch the pc=-1 stuff in compiler has to go away
+* TODO on branch we can make sequences like
+  (if (eq ...)) or (if (not ...)) better
+  by eliminating the intermediate Qt/Qnil work
 * TODO do some dynamic type checking for some functions
   e.g., could inline Flength if we knew it was always called
   for the same type object

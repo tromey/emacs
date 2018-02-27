@@ -537,24 +537,6 @@ wrong_number_of_arguments (int mandatory, int nonrest, int nargs)
 		  make_number (nargs)));
 }
 
-struct pc_list
-{
-  /* PC at which to (re-)start compilation.  */
-  int pc;
-  /* Saved stack pointer.  */
-  int stack_pointer;
-  struct pc_list *next;
-};
-
-#define PUSH_PC(insn)						\
-  do {								\
-    struct pc_list *new = xmalloc (sizeof (struct pc_list));	\
-    new->pc = insn;						\
-    new->stack_pointer = stack_pointer;				\
-    new->next = pc_list;					\
-    pc_list = new;						\
-  } while (0)
-
 #define COMPILE_BUFFER_INT(FIELD) \
   compile_buffer_int (func, offsetof (struct buffer, FIELD))
 
@@ -584,13 +566,395 @@ find_hash_min_max_pc (struct Lisp_Hash_Table *htab,
   return true;
 }
 
+struct stack_slot
+{
+  ptrdiff_t defining_pc;
+  struct stack_slot *previous;
+
+  struct stack_slot *alloc_next;
+};
+
+struct op_state
+{
+  bool is_branch_target;
+  bool is_fallthrough_target;
+  bool seen;
+  int depth_on_entry;
+  struct stack_slot *stack;
+
+  /* Used in pass 2.  */
+  jit_label_t label;
+};
+
+static void
+free_stack_slots (struct stack_slot *head)
+{
+  while (head != NULL)
+    {
+      struct stack_slot *next = head->alloc_next;
+      xfree (head);
+      head = next;
+    }
+}
+
+static struct stack_slot *
+new_stack_slot (ptrdiff_t pc, struct stack_slot *previous,
+		struct stack_slot **head)
+{
+  struct stack_slot *result = xmalloc (sizeof (struct stack_slot));
+
+  result->defining_pc = pc;
+  result->previous = previous;
+  result->alloc_next = *head;
+  *head = result;
+
+  return result;
+}
+
+static int
+compute_stack_depth (struct stack_slot *slot)
+{
+  int result = 0;
+  while (slot != NULL)
+    {
+      slot = slot->previous;
+      ++result;
+    }
+  return result;
+}
+
+static bool
+merge_definitions (struct stack_slot *from, struct stack_slot *to)
+{
+  while (from != to && from != NULL && to != NULL)
+    {
+      if (from->defining_pc != to->defining_pc)
+	to->defining_pc = -1;
+
+      from = from->previous;
+      to = to->previous;
+    }
+
+  /* If tails are shared or both are NULL, all is well.  Otherwise, we
+     have a depth mismatch and we should abandon this compilation.  */
+  return from == to;
+}
+
+#define PREPASS_POP						\
+  states[orig_pc].stack = states[orig_pc].stack->previous
+
+#define PREPASS_PUSH(val) \
+  states[orig_pc].stack = new_stack_slot (val, states[orig_pc].stack, head)
+
+struct stack_effect
+{
+  int pop;
+  int push;
+};
+
+struct prepass_pc_list
+{
+  /* PC at which to (re-)start compilation.  */
+  int pc;
+  /* Saved stack pointer.  */
+  struct stack_slot *working_stack;
+  struct prepass_pc_list *next;
+};
+
+#define PREPASS_PUSH_PC(insn)				\
+  do {							\
+    struct prepass_pc_list *new				\
+      = xmalloc (sizeof (struct prepass_pc_list));	\
+    new->pc = insn;					\
+    new->working_stack = working_stack;			\
+    new->next = pc_list;				\
+    pc_list = new;					\
+  } while (0)
+
+static struct op_state *
+compile_prepass (ptrdiff_t bytestr_length, unsigned char *bytestr_data,
+		 EMACS_INT stack_depth, struct stack_slot **head,
+		 ptrdiff_t total_args)
+{
+#define DEFINE(name, opnum, npop, npush) \
+  [opnum] = {npop, npush},
+
+  static const struct stack_effect stack_effects[256] =
+    {
+     /* Invalid slots will have -2 to distinguish from valid
+	slots.  */
+     [0 ... (Bconstant - 1)] = {-2, -2},
+     [Bconstant ... 255] = {0, 1},
+
+     BYTE_CODES
+    };
+
+#undef DEFINE
+
+  struct prepass_pc_list *pc_list = NULL;
+  struct op_state *result = NULL;
+  struct op_state *states
+    = (struct op_state *) xzalloc (bytestr_length
+				   * sizeof (struct op_state));
+
+  /* Push arguments.  */
+  for (ptrdiff_t i = 0; i < total_args; ++i)
+    states[0].stack = new_stack_slot (-1, states[0].stack, head);
+
+  struct stack_slot *working_stack = states[0].stack;
+  ptrdiff_t pc = 0;
+  for (;;)
+    {
+      if (pc == bytestr_length)
+	{
+	  /* Falling off the end would be bad.  */
+	  goto fail;
+	}
+      else if (pc != -1)
+	{
+	  states[pc].is_fallthrough_target = true;
+	  if (states[pc].seen)
+	    {
+	      /* We've already seen this code, and we're expecting to fall
+		 through.  */
+	      if (!merge_definitions (working_stack, states[pc].stack))
+		{
+		  /* Mismatch means compilation failure.  */
+		  goto fail;
+		}
+	      /* Now resume work at some other PC.  */
+	      pc = -1;
+	    }
+	}
+
+      /* If we don't have a PC currently, pop a new one from the list
+	 and work there.  */
+      while (pc == -1 && pc_list != NULL)
+	{
+	  struct prepass_pc_list *next;
+
+	  pc = pc_list->pc;
+	  working_stack = pc_list->working_stack;
+	  next = pc_list->next;
+	  xfree (pc_list);
+	  pc_list = next;
+
+	  states[pc].is_branch_target = true;
+	  states[pc].label = jit_label_undefined;
+	  if (!states[pc].seen)
+	    {
+	      /* Work on this one.  */
+	      states[pc].seen = true;
+	      states[pc].stack = working_stack;
+	      break;
+	    }
+	  else
+	    {
+	      /* Already compiled this.  */
+	      pc = -1;
+	    }
+	}
+
+      if (pc == -1 && pc_list == NULL)
+	{
+	  /* No more blocks to examine.  */
+	  break;
+	}
+
+      /* FIXME this could be more efficient.  */
+      states[pc].depth_on_entry = compute_stack_depth (states[pc].stack);
+
+      ptrdiff_t orig_pc = pc;
+      int op = FETCH;
+
+      const struct stack_effect *effect = &stack_effects[op];
+      for (int i = 0; i < effect->pop; ++i)
+	PREPASS_POP;
+      for (int i = 0; i < effect->push; ++i)
+	PREPASS_PUSH (orig_pc);
+
+      switch (op)
+	{
+	case Bvarref7:
+	case Bvarset7:
+	case Bvarbind7:
+	case Bunbind7:
+	  pc += 2;
+	  break;
+
+	case Bvarref6:
+	case Bvarset6:
+	case Bvarbind6:
+	case Bunbind6:
+	  ++pc;
+	  break;
+
+	case Bstack_ref7:
+	  op = FETCH2;
+	  goto do_stack_ref;
+
+	case Bstack_ref6:
+	  op = FETCH;
+	do_stack_ref:
+	  {
+	    struct stack_slot *iter;
+	    for (iter = states[orig_pc].stack; op > 0; --op)
+	      iter = iter->previous;
+	    PREPASS_PUSH (iter->defining_pc);
+	  }
+	  break;
+
+	case Bcall7:
+	  op = 1 + FETCH2;
+	  goto do_N;
+
+	case Bcall6:
+	  op = 1 + FETCH;
+	  goto do_N;
+
+	case BlistN:
+	case BconcatN:
+	case BinsertN:
+	  op = FETCH;
+	do_N:
+	  for (int i = 0; i < op; ++i)
+	    PREPASS_POP;
+	  PREPASS_PUSH (orig_pc);
+	  break;
+
+	case BdiscardN:
+	  {
+	    int save_pc = -1;
+
+	    op = FETCH;
+	    if (op & 0x80)
+	      {
+		save_pc = states[orig_pc].stack->defining_pc;
+		op &= 0X7F;
+	      }
+	    for (int i = 0; i < op; ++i)
+	      PREPASS_POP;
+	    if (save_pc != -1)
+	      PREPASS_PUSH (save_pc);
+	  }
+	  break;
+
+	case Bstack_set:
+	  fixme;
+	  op = FETCH;
+	  break;
+
+	case Bstack_set2:
+	  fixme;
+	  op = FETCH2;
+	  break;
+
+	case Bgoto:
+	  op = FETCH2;
+	  PREPASS_PUSH_PC (op);
+	  pc = -1;
+	  break;
+
+	case Bgotoifnil:
+	case Bgotoifnonnil:
+	  {
+	    op = FETCH2;
+	    PREPASS_PUSH_PC (op);
+	    break;
+	  }
+
+	case Bgotoifnilelsepop:
+	case Bgotoifnonnilelsepop:
+	  {
+	    op = FETCH2;
+	    PREPASS_PUSH_PC (op);
+	    PREPASS_POP;
+	    break;
+	  }
+	  break;
+
+	case BRgoto:
+	  {
+	    op = FETCH - 128;
+	    op += pc;
+	    PREPASS_PUSH_PC (op);
+	    pc = -1;
+	    break;
+	  }
+
+	case BRgotoifnil:
+	case BRgotoifnonnil:
+	  {
+	    op = FETCH - 128;
+	    op += pc;
+	    PREPASS_PUSH_PC (op);
+	    break;
+	  }
+
+	case BRgotoifnilelsepop:
+	case BRgotoifnonnilelsepop:
+	  {
+	    op = FETCH - 128;
+	    op += pc;
+	    PREPASS_PUSH_PC (op);
+	    PREPASS_POP;
+	    break;
+	  }
+
+	case Breturn:
+	  pc = -1;
+	  break;
+
+	case Bpushcatch:	/* New in 24.4.  */
+	case Bpushconditioncase: /* New in 24.4.  */
+	  FETCH2;
+	  pc = -1;
+	  fixme;
+	  break;
+
+	case Bswitch:
+	  fixme;
+	  break;
+
+	default:
+	  /* An invalid code means compilation failure.  */
+	  if (effect->pop == -2)
+	    goto fail;
+	  /* Anything requiring special treatment must be handled by
+	     some other case in this switch.  */
+	  eassert (effect->pop != -1);
+	  break;
+	}
+    }
+
+  result = states;
+
+ fail:
+
+  if (result == NULL)
+    {
+      /* Clean up, but note that the stack slot freeing will be
+	 handled by the caller.  */
+      while (pc_list != NULL)
+	{
+	  struct prepass_pc_list *next = pc_list->next;
+	  xfree (pc_list);
+	  pc_list = next;
+	}
+      xfree (states);
+    }
+  else
+    eassert (pc_list == NULL);
+
+  return result;
+}
+
 static struct subr_function *
 compile (ptrdiff_t bytestr_length, unsigned char *bytestr_data,
 	 EMACS_INT stack_depth, Lisp_Object *vectorp,
 	 ptrdiff_t vector_size, Lisp_Object args_template)
 {
   int type;
-  struct pc_list *pc_list = NULL;
 
   /* Note that any error before this is attached to the function must
      free this object.  */
@@ -599,6 +963,8 @@ compile (ptrdiff_t bytestr_length, unsigned char *bytestr_data,
   result->max_args = MANY;
 
   jit_type_t function_signature = compiled_signature;
+
+  struct op_state *states = compile_prepass (...);
 
   bool parse_args = true;
   if (INTEGERP (args_template))
@@ -626,23 +992,16 @@ compile (ptrdiff_t bytestr_length, unsigned char *bytestr_data,
   jit_value_t *stack = (jit_value_t *) xmalloc (stack_depth
 						* sizeof (jit_value_t));
   int stack_pointer = -1;
-  jit_label_t *labels = (jit_label_t *) xmalloc (bytestr_length
-						 * sizeof (jit_label_t));
   /* Temporary array used only for switches.  */
   jit_label_t *sw_labels = (jit_label_t *) xmalloc (bytestr_length
 						    * sizeof (jit_label_t));
-  int *stack_depths = (int *) xmalloc (bytestr_length * sizeof (int));
   jit_value_t n_args, arg_vec;
 
   /* On failure this will also free RESULT.  */
   jit_function_set_meta (func, 0, result, xfree, 0);
 
   for (int i = 0; i < bytestr_length; ++i)
-    {
-      labels[i] = jit_label_undefined;
-      sw_labels[i] = jit_label_undefined;
-      stack_depths[i] = -1;
-    }
+    sw_labels[i] = jit_label_undefined;
 
   for (int i = 0; i < stack_depth; ++i)
     stack[i] = jit_value_create (func, jit_type_void_ptr);
@@ -773,7 +1132,7 @@ compile (ptrdiff_t bytestr_length, unsigned char *bytestr_data,
 					callN_signature,
 					args, 2, JIT_CALL_NOTHROW);
 	      PUSH (listval);
-	      jit_insn_branch (func, &labels[0]);
+	      jit_insn_branch (func, &states[0].label);
 
 	      /* Since we emitted a branch.  */
 	      --stack_pointer;
@@ -788,57 +1147,12 @@ compile (ptrdiff_t bytestr_length, unsigned char *bytestr_data,
 
   for (;;)
     {
-      if (pc == bytestr_length)
-	{
-	  /* Falling off the end would be bad.  */
-	  goto fail;
-	}
-      else if (pc != -1 && (stack_depths[pc] != -1))
-	{
-	  /* We've already compiled this code, and we're expecting to
-	     fall through.  So, emit a goto and then resume work at
-	     some other PC.  */
-	  jit_insn_branch (func, &labels[pc]);
-	  pc = -1;
-	}
-
-      /* If we don't have a PC currently, pop a new one from the list
-	 and work there.  */
-      while (pc == -1 && pc_list != NULL)
-	{
-	  struct pc_list *next;
-
-	  pc = pc_list->pc;
-	  stack_pointer = pc_list->stack_pointer;
-	  next = pc_list->next;
-	  xfree (pc_list);
-	  pc_list = next;
-
-	  if (stack_depths[pc] == -1)
-	    {
-	      /* Work on this one.  */
-	      stack_depths[pc] = stack_pointer + 1;
-	      break;
-	    }
-	  else if (stack_depths[pc] == stack_pointer + 1)
-	    {
-	      /* Already compiled this.  */
-	      pc = -1;
-	    }
-	  else
-	    {
-	      /* Oops - failure.  */
-	      goto fail;
-	    }
-	}
-
-      if (pc == -1 && pc_list == NULL)
-	{
-	  /* No more blocks to examine.  */
-	  break;
-	}
-
-      jit_insn_label (func, &labels[pc]);
+      /* We can do the compilation in bytecode order because the
+	 prepass has already computed the information we need in order
+	 to do so.  */
+      eassert (states[pc].seen);
+      if (states[pc].is_branch_target)
+	jit_insn_label (func, &states[pc].label);
 
       int op = FETCH;
       switch (op)
@@ -873,7 +1187,7 @@ compile (ptrdiff_t bytestr_length, unsigned char *bytestr_data,
 
 	case Bcar:
 	  car_or_cdr (func, TOP, offsetof (struct Lisp_Cons, u.s.car),
-		      &labels[pc], false,
+		      &states[pc].label, false,
 		      &called_wtype, &wtype_label, wtype_arg);
 	  break;
 
@@ -881,7 +1195,7 @@ compile (ptrdiff_t bytestr_length, unsigned char *bytestr_data,
 	  {
 	    jit_value_t v1 = POP;
 	    jit_value_t compare = jit_insn_eq (func, v1, TOP);
-	    emit_qnil_or_qt (func, compare, TOP, &labels[pc]);
+	    emit_qnil_or_qt (func, compare, TOP, &states[pc].label);
 	    break;
 	  }
 
@@ -894,7 +1208,7 @@ compile (ptrdiff_t bytestr_length, unsigned char *bytestr_data,
 
 	case Bcdr:
 	  car_or_cdr (func, TOP, offsetof (struct Lisp_Cons, u.s.u.cdr),
-		      &labels[pc], false,
+		      &states[pc].label, false,
 		      &called_wtype, &wtype_label, wtype_arg);
 	  break;
 
@@ -1235,7 +1549,7 @@ compile (ptrdiff_t bytestr_length, unsigned char *bytestr_data,
 					 setjmp_signature,
 					 &jmp, 1, JIT_CALL_NOTHROW);
 	    PUSH_PC (pc);
-	    jit_insn_branch_if_not (func, cond, &labels[pc]);
+	    jit_insn_branch_if_not (func, cond, &states[pc].label);
 
 	    /* Something threw to here.  */
 	    jit_value_t hlist = compile_next_handlerlist (func);
@@ -1317,21 +1631,21 @@ compile (ptrdiff_t bytestr_length, unsigned char *bytestr_data,
 	case Bsymbolp:
 	  {
 	    jit_value_t compare = compare_type (func, TOP, Lisp_Symbol);
-	    emit_qnil_or_qt (func, compare, TOP, &labels[pc]);
+	    emit_qnil_or_qt (func, compare, TOP, &states[pc].label);
 	    break;
 	  }
 
 	case Bconsp:
 	  {
 	    jit_value_t compare = compare_type (func, TOP, Lisp_Cons);
-	    emit_qnil_or_qt (func, compare, TOP, &labels[pc]);
+	    emit_qnil_or_qt (func, compare, TOP, &states[pc].label);
 	    break;
 	  }
 
 	case Bstringp:
 	  {
 	    jit_value_t compare = compare_type (func, TOP, Lisp_String);
-	    emit_qnil_or_qt (func, compare, TOP, &labels[pc]);
+	    emit_qnil_or_qt (func, compare, TOP, &states[pc].label);
 	    break;
 	  }
 
@@ -1347,7 +1661,7 @@ compile (ptrdiff_t bytestr_length, unsigned char *bytestr_data,
 	    /* Is a cons.  */
 	    tem = CONSTANT (func, Qt);
 	    jit_insn_store (func, TOP, tem);
-	    jit_insn_branch (func, &labels[pc]);
+	    jit_insn_branch (func, &states[pc].label);
 
 	    jit_insn_label (func, &not_a_cons);
 
@@ -1359,7 +1673,7 @@ compile (ptrdiff_t bytestr_length, unsigned char *bytestr_data,
 	    /* Is nil.  */
 	    tem = CONSTANT (func, Qt);
 	    jit_insn_store (func, TOP, tem);
-	    jit_insn_branch (func, &labels[pc]);
+	    jit_insn_branch (func, &states[pc].label);
 
 	    jit_insn_label (func, &not_nil);
 	    jit_insn_store (func, TOP, nilval);
@@ -1369,7 +1683,7 @@ compile (ptrdiff_t bytestr_length, unsigned char *bytestr_data,
 	case Bnot:
 	  {
 	    jit_value_t compare = eq_nil (func, TOP);
-	    emit_qnil_or_qt (func, compare, TOP, &labels[pc]);
+	    emit_qnil_or_qt (func, compare, TOP, &states[pc].label);
 	    break;
 	  }
 
@@ -1488,11 +1802,11 @@ compile (ptrdiff_t bytestr_length, unsigned char *bytestr_data,
 	  }
 
 	case Bsub1:
-	  unary_intmath (func, TOP, SUB1, &labels[pc]);
+	  unary_intmath (func, TOP, SUB1, &states[pc].label);
 	  break;
 
 	case Badd1:
-	  unary_intmath (func, TOP, ADD1, &labels[pc]);
+	  unary_intmath (func, TOP, ADD1, &states[pc].label);
 	  break;
 
 	case Beqlsign:
@@ -1537,7 +1851,7 @@ compile (ptrdiff_t bytestr_length, unsigned char *bytestr_data,
 	  }
 
 	case Bnegate:
-	  unary_intmath (func, TOP, NEGATE, &labels[pc]);
+	  unary_intmath (func, TOP, NEGATE, &states[pc].label);
 	  break;
 
 	case Bplus:
@@ -1637,7 +1951,7 @@ compile (ptrdiff_t bytestr_length, unsigned char *bytestr_data,
 	  {
 	    jit_value_t compare = COMPARE_BUFFER_INTS (pt, zv);
 	    ++stack_pointer;
-	    emit_qnil_or_qt (func, compare, TOP, &labels[pc]);
+	    emit_qnil_or_qt (func, compare, TOP, &states[pc].label);
 	    break;
 	  }
 
@@ -1649,7 +1963,7 @@ compile (ptrdiff_t bytestr_length, unsigned char *bytestr_data,
 	  {
 	    jit_value_t compare = COMPARE_BUFFER_INTS (pt, begv);
 	    ++stack_pointer;
-	    emit_qnil_or_qt (func, compare, TOP, &labels[pc]);
+	    emit_qnil_or_qt (func, compare, TOP, &states[pc].label);
 	    break;
 	  }
 
@@ -1827,13 +2141,13 @@ compile (ptrdiff_t bytestr_length, unsigned char *bytestr_data,
 
 	case Bcar_safe:
 	  car_or_cdr (func, TOP, offsetof (struct Lisp_Cons, u.s.car),
-		      &labels[pc], true,
+		      &states[pc].label, true,
 		      &called_wtype, &wtype_label, wtype_arg);
 	  break;
 
 	case Bcdr_safe:
 	  car_or_cdr (func, TOP, offsetof (struct Lisp_Cons, u.s.u.cdr),
-		      &labels[pc], true,
+		      &states[pc].label, true,
 		      &called_wtype, &wtype_label, wtype_arg);
 	  break;
 
@@ -1862,7 +2176,7 @@ compile (ptrdiff_t bytestr_length, unsigned char *bytestr_data,
 
 	    jit_insn_label (func, &push_nil);
 	    PUSH (CONSTANT (func, Qnil));
-	    jit_insn_branch (func, &labels[pc]);
+	    jit_insn_branch (func, &states[pc].label);
 
 	    --stack_pointer;
 	    jit_insn_label (func, &push_t);
@@ -1874,7 +2188,7 @@ compile (ptrdiff_t bytestr_length, unsigned char *bytestr_data,
 	case Bintegerp:
 	  {
 	    jit_value_t compare = compare_integerp (func, TOP, NULL);
-	    emit_qnil_or_qt (func, compare, TOP, &labels[pc]);
+	    emit_qnil_or_qt (func, compare, TOP, &states[pc].label);
 	    break;
 	  }
 
@@ -2073,7 +2387,6 @@ compile (ptrdiff_t bytestr_length, unsigned char *bytestr_data,
   xfree (stack);
   xfree (labels);
   xfree (sw_labels);
-  xfree (stack_depths);
   eassert (pc_list == NULL);
 
   return result;
