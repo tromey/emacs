@@ -1502,13 +1502,6 @@ compile (ptrdiff_t bytestr_length, unsigned char *bytestr_data,
 	  DISCARD (1);
 	  break;
 
-	case Bconstant2:
-	  {
-	    jit_value_t tem = CONSTANT (func, vectorp[FETCH2]);
-	    PUSH (tem);
-	    break;
-	  }
-
 	case Bsave_excursion:
 	  {
 	    jit_value_t vals[2];
@@ -2302,24 +2295,32 @@ compile (ptrdiff_t bytestr_length, unsigned char *bytestr_data,
 	     a constant on the stack.  */
 	  goto fail;
 
+	case Bconstant2:
+	  op = FETCH2;
+	  goto do_constant;
+
 	default:
 	case Bconstant:
 	  {
 	    if (op < Bconstant || op > Bconstant + vector_size)
 	      goto fail;
 
+	    op -= Bconstant;
+
+	  do_constant:
+
 	    /* See the Bswitch case for commentary.  */
 	    if (pc >= bytestr_length || bytestr_data[pc] != Bswitch)
 	      {
-		jit_value_t c = CONSTANT (func, vectorp[op - Bconstant]);
+		jit_value_t c = CONSTANT (func, vectorp[op]);
 		PUSH (c);
 		break;
 	      }
 
 	    /* We're compiling Bswitch instead.  */
 	    ++pc;
-	    Lisp_Object htab = vectorp[op - Bconstant];
-            struct Lisp_Hash_Table *h = XHASH_TABLE (vectorp[op - Bconstant]);
+	    Lisp_Object htab = vectorp[op];
+            struct Lisp_Hash_Table *h = XHASH_TABLE (vectorp[op]);
 
 	    /* Minimum and maximum PC values for the table.  */
 	    EMACS_INT min_pc = bytestr_length, max_pc = 0;
