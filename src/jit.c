@@ -840,13 +840,31 @@ compile_prepass (ptrdiff_t bytestr_length, unsigned char *bytestr_data,
 	  break;
 
 	case Bstack_set:
-	  fixme;
 	  op = FETCH;
-	  break;
+	  goto do_stack_set;
 
 	case Bstack_set2:
-	  fixme;
 	  op = FETCH2;
+	do_stack_set:
+	  {
+	    int save_pc = states[orig_pc].stack->defining_pc;
+	    PREPASS_POP;
+	    struct stack_slot *push_slots = NULL;
+	    struct stack_slot **next = &push_slots;
+	    for (int i = 0; i < op; ++i)
+	      {
+		ptrdiff_t pc = ((i == op - 1)
+				? save_pc
+				: states[orig_pc].stack->defining_pc);
+		*next = new_stack_slot (pc, NULL, head);
+		next = &next->previous;
+	      }
+	    if (push_slots)
+	      {
+		*next = states[orig_pc].stack;
+		states[orig_pc].stack = push_slots;
+	      }
+	  }
 	  break;
 
 	case Bgoto:
@@ -907,14 +925,22 @@ compile_prepass (ptrdiff_t bytestr_length, unsigned char *bytestr_data,
 
 	case Bpushcatch:	/* New in 24.4.  */
 	case Bpushconditioncase: /* New in 24.4.  */
-	  FETCH2;
+	  op = FETCH2;
+	  PREPASS_POP;
+	  /* The value pushed on exception comes from nowhere.  */
+	  PREPASS_PUSH (-1);
+	  PREPASS_PUSH_PC (op);
+	  PREPASS_POP;
 	  pc = -1;
-	  fixme;
 	  break;
 
 	case Bswitch:
-	  fixme;
-	  break;
+	  /* The cases of Bswitch that we handle (which in theory is
+	     all of them) are done in Bconstant, below.  This is done
+	     due to a design issue with Bswitch -- it should have
+	     taken a constant pool index inline, but instead looks for
+	     a constant on the stack.  */
+	  goto fail;
 
 	default:
 	  /* An invalid code means compilation failure.  */
@@ -923,7 +949,10 @@ compile_prepass (ptrdiff_t bytestr_length, unsigned char *bytestr_data,
 	  /* Anything requiring special treatment must be handled by
 	     some other case in this switch.  */
 	  eassert (effect->pop != -1);
-	  break;
+
+	  if (op < Bconstant || op > Bconstant + vector_size
+	      || pc >= bytestr_length || bytestr_data[pc] != Bswitch)
+	    break;
 	}
     }
 

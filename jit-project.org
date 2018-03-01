@@ -1,3 +1,4 @@
+* TODO Bconstant2 -vs- switch
 * TODO switch needs prepass work
   and we can maybe do less work in the compiler
   for example the Bconstant handling
