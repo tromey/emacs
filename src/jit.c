@@ -568,7 +568,7 @@ find_hash_min_max_pc (struct Lisp_Hash_Table *htab,
 
 struct stack_slot
 {
-  ptrdiff_t defining_pc;
+  int const_index;
   struct stack_slot *previous;
 
   struct stack_slot *alloc_next;
@@ -598,12 +598,12 @@ free_stack_slots (struct stack_slot *head)
 }
 
 static struct stack_slot *
-new_stack_slot (ptrdiff_t pc, struct stack_slot *previous,
+new_stack_slot (int index, struct stack_slot *previous,
 		struct stack_slot **head)
 {
   struct stack_slot *result = xmalloc (sizeof (struct stack_slot));
 
-  result->defining_pc = pc;
+  result->const_index = index;
   result->previous = previous;
   result->alloc_next = *head;
   *head = result;
@@ -628,8 +628,8 @@ merge_definitions (struct stack_slot *from, struct stack_slot *to)
 {
   while (from != to && from != NULL && to != NULL)
     {
-      if (from->defining_pc != to->defining_pc)
-	to->defining_pc = -1;
+      if (from->const_index != to->const_index)
+	to->const_index = -1;
 
       from = from->previous;
       to = to->previous;
@@ -641,10 +641,10 @@ merge_definitions (struct stack_slot *from, struct stack_slot *to)
 }
 
 #define PREPASS_POP						\
-  states[orig_pc].stack = states[orig_pc].stack->previous
+  working_stack = working_stack->previous
 
-#define PREPASS_PUSH(val) \
-  states[orig_pc].stack = new_stack_slot (val, states[orig_pc].stack, head)
+#define PREPASS_PUSH(val)					\
+  working_stack = new_stack_slot (val, working_stack, head)
 
 struct stack_effect
 {
@@ -673,8 +673,8 @@ struct prepass_pc_list
 
 static struct op_state *
 compile_prepass (ptrdiff_t bytestr_length, unsigned char *bytestr_data,
-		 EMACS_INT stack_depth, struct stack_slot **head,
-		 ptrdiff_t total_args)
+		 Lisp_Object *vectorp, ptrdiff_t vector_size,
+		 struct stack_slot **head, ptrdiff_t total_args)
 {
 #define DEFINE(name, opnum, npop, npush) \
   [opnum] = {npop, npush},
@@ -684,7 +684,7 @@ compile_prepass (ptrdiff_t bytestr_length, unsigned char *bytestr_data,
      /* Invalid slots will have -2 to distinguish from valid
 	slots.  */
      [0 ... (Bconstant - 1)] = {-2, -2},
-     [Bconstant ... 255] = {0, 1},
+     [Bconstant ... 255] = {-1, -1},
 
      BYTE_CODES
     };
@@ -762,7 +762,8 @@ compile_prepass (ptrdiff_t bytestr_length, unsigned char *bytestr_data,
 	}
 
       /* FIXME this could be more efficient.  */
-      states[pc].depth_on_entry = compute_stack_depth (states[pc].stack);
+      states[pc].stack = working_stack;
+      states[pc].depth_on_entry = compute_stack_depth (working_stack);
 
       ptrdiff_t orig_pc = pc;
       int op = FETCH;
@@ -771,7 +772,7 @@ compile_prepass (ptrdiff_t bytestr_length, unsigned char *bytestr_data,
       for (int i = 0; i < effect->pop; ++i)
 	PREPASS_POP;
       for (int i = 0; i < effect->push; ++i)
-	PREPASS_PUSH (orig_pc);
+	PREPASS_PUSH (-1);
 
       switch (op)
 	{
@@ -800,7 +801,7 @@ compile_prepass (ptrdiff_t bytestr_length, unsigned char *bytestr_data,
 	    struct stack_slot *iter;
 	    for (iter = states[orig_pc].stack; op > 0; --op)
 	      iter = iter->previous;
-	    PREPASS_PUSH (iter->defining_pc);
+	    PREPASS_PUSH (iter->const_index);
 	  }
 	  break;
 
@@ -819,23 +820,23 @@ compile_prepass (ptrdiff_t bytestr_length, unsigned char *bytestr_data,
 	do_N:
 	  for (int i = 0; i < op; ++i)
 	    PREPASS_POP;
-	  PREPASS_PUSH (orig_pc);
+	  PREPASS_PUSH (-1);
 	  break;
 
 	case BdiscardN:
 	  {
-	    int save_pc = -1;
+	    int save_value = -1;
 
 	    op = FETCH;
 	    if (op & 0x80)
 	      {
-		save_pc = states[orig_pc].stack->defining_pc;
+		save_value = states[orig_pc].stack->const_index;
 		op &= 0X7F;
 	      }
 	    for (int i = 0; i < op; ++i)
 	      PREPASS_POP;
-	    if (save_pc != -1)
-	      PREPASS_PUSH (save_pc);
+	    if (save_value != -1)
+	      PREPASS_PUSH (save_value);
 	  }
 	  break;
 
@@ -847,17 +848,17 @@ compile_prepass (ptrdiff_t bytestr_length, unsigned char *bytestr_data,
 	  op = FETCH2;
 	do_stack_set:
 	  {
-	    int save_pc = states[orig_pc].stack->defining_pc;
+	    int save_index = states[orig_pc].stack->const_index;
 	    PREPASS_POP;
 	    struct stack_slot *push_slots = NULL;
 	    struct stack_slot **next = &push_slots;
 	    for (int i = 0; i < op; ++i)
 	      {
 		ptrdiff_t pc = ((i == op - 1)
-				? save_pc
-				: states[orig_pc].stack->defining_pc);
+				? save_index
+				: states[orig_pc].stack->const_index);
 		*next = new_stack_slot (pc, NULL, head);
-		next = &next->previous;
+		next = &(*next)->previous;
 	      }
 	    if (push_slots)
 	      {
@@ -935,24 +936,57 @@ compile_prepass (ptrdiff_t bytestr_length, unsigned char *bytestr_data,
 	  break;
 
 	case Bswitch:
-	  /* The cases of Bswitch that we handle (which in theory is
-	     all of them) are done in Bconstant, below.  This is done
-	     due to a design issue with Bswitch -- it should have
-	     taken a constant pool index inline, but instead looks for
-	     a constant on the stack.  */
-	  goto fail;
+	  {
+	    if (states[orig_pc].stack == NULL
+		|| states[orig_pc].stack->const_index == -1)
+	      {
+		/* We require a constant for Bswitch.  */
+		goto fail;
+	      }
+
+            struct Lisp_Hash_Table *h
+	      = XHASH_TABLE (vectorp[states[orig_pc].stack->const_index]);
+	    /* These pops have to come after we examine the stack.  */
+	    PREPASS_POP;
+	    PREPASS_POP;
+	    for (ptrdiff_t i = 0; i < HASH_TABLE_SIZE (h); ++i)
+	      {
+		if (!NILP (HASH_HASH (h, i)))
+		  {
+		    Lisp_Object pc = HASH_VALUE (h, i);
+		    if (!INTEGERP (pc))
+		      goto fail;
+		    EMACS_INT pcval = XINT (pc);
+		    PREPASS_PUSH_PC (pcval);
+		  }
+	      }
+	  }
+	  break;
+
+	case Bconstant2:
+	  op = FETCH2;
+	  goto do_constant;
 
 	default:
 	  /* An invalid code means compilation failure.  */
 	  if (effect->pop == -2)
 	    goto fail;
-	  /* Anything requiring special treatment must be handled by
-	     some other case in this switch.  */
-	  eassert (effect->pop != -1);
 
-	  if (op < Bconstant || op > Bconstant + vector_size
-	      || pc >= bytestr_length || bytestr_data[pc] != Bswitch)
-	    break;
+	  if (op >= Bconstant && op < Bconstant + vector_size)
+	    {
+	      op -= Bconstant;
+	    }
+	  else
+	    {
+	      /* Anything requiring special treatment must be handled
+		 by some other case in this switch.  */
+	      eassert (effect->pop != -1);
+	      break;
+	    }
+
+	do_constant:
+	  PREPASS_PUSH (op);
+	  break;
 	}
     }
 
@@ -993,15 +1027,17 @@ compile (ptrdiff_t bytestr_length, unsigned char *bytestr_data,
 
   jit_type_t function_signature = compiled_signature;
 
-  struct op_state *states = compile_prepass (...);
+  bool rest = false;
+  ptrdiff_t mandatory = 0;
+  ptrdiff_t nonrest = 0;
 
   bool parse_args = true;
   if (INTEGERP (args_template))
     {
       ptrdiff_t at = XINT (args_template);
-      bool rest = (at & 128) != 0;
-      int mandatory = at & 127;
-      ptrdiff_t nonrest = at >> 8;
+      rest = (at & 128) != 0;
+      mandatory = at & 127;
+      nonrest = at >> 8;
 
       /* Always set this correctly so that funcall_subr will do some
 	 checking for us.  */
@@ -1014,6 +1050,11 @@ compile (ptrdiff_t bytestr_length, unsigned char *bytestr_data,
 	  parse_args = false;
 	}
     }
+
+  struct stack_slot *stack_alloc = NULL;
+  struct op_state *states = compile_prepass (bytestr_length, bytestr_data,
+					     vectorp, vector_size, &stack_alloc,
+					     nonrest + (int) rest);
 
   jit_function_t func = jit_function_create (emacs_jit_context,
 					     function_signature);
@@ -1055,9 +1096,6 @@ compile (ptrdiff_t bytestr_length, unsigned char *bytestr_data,
     {
       /* We can emit function that doesn't need to manually decipher
 	 its arguments.  */
-      ptrdiff_t at = XINT (args_template);
-      ptrdiff_t nonrest = at >> 8;
-
       for (ptrdiff_t i = 0; i < nonrest; ++i)
 	PUSH (jit_value_get_param (func, i));
     }
@@ -1069,11 +1107,6 @@ compile (ptrdiff_t bytestr_length, unsigned char *bytestr_data,
 
       if (INTEGERP (args_template))
 	{
-	  ptrdiff_t at = XINT (args_template);
-	  bool rest = (at & 128) != 0;
-	  int mandatory = at & 127;
-	  ptrdiff_t nonrest = at >> 8;
-
 	  mandatory_val
 	    = jit_value_create_long_constant (func, ptrdiff_t_type, mandatory);
 	  nonrest_val
@@ -1358,12 +1391,8 @@ compile (ptrdiff_t bytestr_length, unsigned char *bytestr_data,
 
 	case Bgoto:
 	  op = FETCH2;
-	  /* This looks funny but it circumvents the code above that
-	     handles the case where fall-through actually requires a
-	     branch.  */
-	  PUSH_PC (op);
-	  pc = -1;
-	  jit_insn_branch (func, &labels[op]);
+	  eassert (states[op].is_branch_target);
+	  jit_insn_branch (func, &states[op].label);
 	  break;
 
 	case Bgotoifnil:
@@ -1371,8 +1400,8 @@ compile (ptrdiff_t bytestr_length, unsigned char *bytestr_data,
 	    jit_value_t v1 = POP;
 	    jit_value_t compare = eq_nil (func, v1);
 	    op = FETCH2;
-	    PUSH_PC (op);
-	    jit_insn_branch_if (func, compare, &labels[op]);
+	    eassert (states[op].is_branch_target);
+	    jit_insn_branch_if (func, compare, &states[op].label);
 	    break;
 	  }
 
@@ -1381,8 +1410,8 @@ compile (ptrdiff_t bytestr_length, unsigned char *bytestr_data,
 	    jit_value_t val = POP;
 	    jit_value_t compare = eq_nil (func, val);
 	    op = FETCH2;
-	    PUSH_PC (op);
-	    jit_insn_branch_if_not (func, compare, &labels[op]);
+	    eassert (states[op].is_branch_target);
+	    jit_insn_branch_if_not (func, compare, &states[op].label);
 	    break;
 	  }
 
@@ -1391,8 +1420,8 @@ compile (ptrdiff_t bytestr_length, unsigned char *bytestr_data,
 	    jit_value_t v1 = TOP;
 	    jit_value_t compare = eq_nil (func, v1);
 	    op = FETCH2;
-	    PUSH_PC (op);
-	    jit_insn_branch_if (func, compare, &labels[op]);
+	    eassert (states[op].is_branch_target);
+	    jit_insn_branch_if (func, compare, &states[op].label);
 	    DISCARD (1);
 	    break;
 	  }
@@ -1403,8 +1432,8 @@ compile (ptrdiff_t bytestr_length, unsigned char *bytestr_data,
 	    jit_value_t v1 = TOP;
 	    jit_value_t compare = eq_nil (func, v1);
 	    op = FETCH2;
-	    PUSH_PC (op);
-	    jit_insn_branch_if_not (func, compare, &labels[op]);
+	    eassert (states[op].is_branch_target);
+	    jit_insn_branch_if_not (func, compare, &states[op].label);
 	    DISCARD (1);
 	    break;
 	  }
@@ -1414,12 +1443,8 @@ compile (ptrdiff_t bytestr_length, unsigned char *bytestr_data,
 	  {
 	    op = FETCH - 128;
 	    op += pc;
-	    /* This looks funny but it circumvents the code above that
-	       handles the case where fall-through actually requires a
-	       branch.  */
-	    PUSH_PC (op);
-	    pc = -1;
-	    jit_insn_branch (func, &labels[op]);
+	    eassert (states[op].is_branch_target);
+	    jit_insn_branch (func, &states[op].label);
 	    break;
 	  }
 
@@ -1429,8 +1454,8 @@ compile (ptrdiff_t bytestr_length, unsigned char *bytestr_data,
 	    jit_value_t compare = eq_nil (func, v1);
 	    op = FETCH - 128;
 	    op += pc;
-	    PUSH_PC (op);
-	    jit_insn_branch_if (func, compare, &labels[op]);
+	    eassert (states[op].is_branch_target);
+	    jit_insn_branch_if (func, compare, &states[op].label);
 	    break;
 	  }
 
@@ -1440,8 +1465,8 @@ compile (ptrdiff_t bytestr_length, unsigned char *bytestr_data,
 	    jit_value_t compare = eq_nil (func, v1);
 	    op = FETCH - 128;
 	    op += pc;
-	    PUSH_PC (op);
-	    jit_insn_branch_if_not (func, compare, &labels[op]);
+	    eassert (states[op].is_branch_target);
+	    jit_insn_branch_if_not (func, compare, &states[op].label);
 	    break;
 	  }
 
@@ -1451,8 +1476,8 @@ compile (ptrdiff_t bytestr_length, unsigned char *bytestr_data,
 	    jit_value_t compare = eq_nil (func, v1);
 	    op = FETCH - 128;
 	    op += pc;
-	    PUSH_PC (op);
-	    jit_insn_branch_if (func, compare, &labels[op]);
+	    eassert (states[op].is_branch_target);
+	    jit_insn_branch_if (func, compare, &states[op].label);
 	    DISCARD (1);
 	    break;
 	  }
@@ -1463,15 +1488,14 @@ compile (ptrdiff_t bytestr_length, unsigned char *bytestr_data,
 	    jit_value_t compare = eq_nil (func, v1);
 	    op = FETCH - 128;
 	    op += pc;
-	    PUSH_PC (op);
-	    jit_insn_branch_if_not (func, compare, &labels[op]);
+	    eassert (states[op].is_branch_target);
+	    jit_insn_branch_if_not (func, compare, &states[op].label);
 	    DISCARD (1);
 	    break;
 	  }
 
 	case Breturn:
 	  jit_insn_return (func, TOP);
-	  pc = -1;
 	  break;
 
 	case Bdiscard:
@@ -1577,7 +1601,7 @@ compile (ptrdiff_t bytestr_length, unsigned char *bytestr_data,
 	    cond = jit_insn_call_native (func, "sys_setjmp", setjmp,
 					 setjmp_signature,
 					 &jmp, 1, JIT_CALL_NOTHROW);
-	    PUSH_PC (pc);
+	    eassert (states[pc].is_branch_target);
 	    jit_insn_branch_if_not (func, cond, &states[pc].label);
 
 	    /* Something threw to here.  */
@@ -1589,10 +1613,9 @@ compile (ptrdiff_t bytestr_length, unsigned char *bytestr_data,
 					jit_type_void_ptr);
 
 	    PUSH (val);
-	    PUSH_PC (handler_pc);
-	    jit_insn_branch (func, &labels[handler_pc]);
+	    eassert (states[handler_pc].is_branch_target);
+	    jit_insn_branch (func, &states[handler_pc].label);
 
-	    pc = -1;
 	    break;
 	  }
 
@@ -2417,6 +2440,7 @@ compile (ptrdiff_t bytestr_length, unsigned char *bytestr_data,
   xfree (labels);
   xfree (sw_labels);
   eassert (pc_list == NULL);
+  free_stack_slots (stack_alloc);
 
   return result;
 }

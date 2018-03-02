@@ -163,7 +163,7 @@ DEFINE (Bnarrow_to_region, 0175, 2, 1)					\
 DEFINE (Bwiden, 0176, 0, 1)						\
 DEFINE (Bend_of_line, 0177, 1, 1)					\
 									\
-DEFINE (Bconstant2, 0201, 0, 1)						\
+DEFINE (Bconstant2, 0201, -1, -1)						\
 DEFINE (Bgoto, 0202, 0, 0)						\
 DEFINE (Bgotoifnil, 0203, 1, 0)						\
 DEFINE (Bgotoifnonnil, 0204, 1, 0)					\
@@ -224,9 +224,9 @@ DEFINE (Bstack_set,  0262, -1, -1)					\
 DEFINE (Bstack_set2, 0263, -1, -1)					\
 DEFINE (BdiscardN,   0266, -1, -1)					\
 									\
-DEFINE (Bswitch, 0267, 2, 0)						\
+DEFINE (Bswitch, 0267, -1, -1)						\
                                                                         \
-DEFINE (Bconstant, 0300, 0, 1)
+DEFINE (Bconstant, 0300, -1, -1)
 
 enum byte_code_op
 {
