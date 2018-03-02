@@ -691,6 +691,13 @@ compile_prepass (ptrdiff_t bytestr_length, unsigned char *bytestr_data,
 
 #undef DEFINE
 
+#define FAIL					\
+  do {						\
+    failure = __LINE__;				\
+    goto fail;					\
+  } while (0)
+  int failure = -1;
+
   struct prepass_pc_list *pc_list = NULL;
   struct op_state *result = NULL;
   struct op_state *states
@@ -698,17 +705,17 @@ compile_prepass (ptrdiff_t bytestr_length, unsigned char *bytestr_data,
 				   * sizeof (struct op_state));
 
   /* Push arguments.  */
+  struct stack_slot *working_stack = NULL;
   for (ptrdiff_t i = 0; i < total_args; ++i)
-    states[0].stack = new_stack_slot (-1, states[0].stack, head);
+    PREPASS_PUSH (-1);
 
-  struct stack_slot *working_stack = states[0].stack;
   ptrdiff_t pc = 0;
   for (;;)
     {
       if (pc == bytestr_length)
 	{
 	  /* Falling off the end would be bad.  */
-	  goto fail;
+	  FAIL;
 	}
       else if (pc != -1)
 	{
@@ -720,7 +727,7 @@ compile_prepass (ptrdiff_t bytestr_length, unsigned char *bytestr_data,
 	      if (!merge_definitions (working_stack, states[pc].stack))
 		{
 		  /* Mismatch means compilation failure.  */
-		  goto fail;
+		  FAIL;
 		}
 	      /* Now resume work at some other PC.  */
 	      pc = -1;
@@ -744,8 +751,6 @@ compile_prepass (ptrdiff_t bytestr_length, unsigned char *bytestr_data,
 	  if (!states[pc].seen)
 	    {
 	      /* Work on this one.  */
-	      states[pc].seen = true;
-	      states[pc].stack = working_stack;
 	      break;
 	    }
 	  else
@@ -764,6 +769,7 @@ compile_prepass (ptrdiff_t bytestr_length, unsigned char *bytestr_data,
       /* FIXME this could be more efficient.  */
       states[pc].stack = working_stack;
       states[pc].depth_on_entry = compute_stack_depth (working_stack);
+      states[pc].seen = true;
 
       ptrdiff_t orig_pc = pc;
       int op = FETCH;
@@ -941,11 +947,13 @@ compile_prepass (ptrdiff_t bytestr_length, unsigned char *bytestr_data,
 		|| states[orig_pc].stack->const_index == -1)
 	      {
 		/* We require a constant for Bswitch.  */
-		goto fail;
+		FAIL;
 	      }
 
-            struct Lisp_Hash_Table *h
-	      = XHASH_TABLE (vectorp[states[orig_pc].stack->const_index]);
+            Lisp_Object table = vectorp[states[orig_pc].stack->const_index];
+	    if (!HASH_TABLE_P (table))
+	      FAIL;
+	    struct Lisp_Hash_Table *h = XHASH_TABLE (table);
 	    /* These pops have to come after we examine the stack.  */
 	    PREPASS_POP;
 	    PREPASS_POP;
@@ -955,7 +963,7 @@ compile_prepass (ptrdiff_t bytestr_length, unsigned char *bytestr_data,
 		  {
 		    Lisp_Object pc = HASH_VALUE (h, i);
 		    if (!INTEGERP (pc))
-		      goto fail;
+		      FAIL;
 		    EMACS_INT pcval = XINT (pc);
 		    PREPASS_PUSH_PC (pcval);
 		  }
@@ -965,27 +973,26 @@ compile_prepass (ptrdiff_t bytestr_length, unsigned char *bytestr_data,
 
 	case Bconstant2:
 	  op = FETCH2;
-	  goto do_constant;
+	  PREPASS_PUSH (op);
+	  break;
 
+	case Bconstant:
 	default:
 	  /* An invalid code means compilation failure.  */
 	  if (effect->pop == -2)
-	    goto fail;
+	    FAIL;
 
 	  if (op >= Bconstant && op < Bconstant + vector_size)
 	    {
 	      op -= Bconstant;
+	      PREPASS_PUSH (op);
 	    }
 	  else
 	    {
 	      /* Anything requiring special treatment must be handled
 		 by some other case in this switch.  */
 	      eassert (effect->pop != -1);
-	      break;
 	    }
-
-	do_constant:
-	  PREPASS_PUSH (op);
 	  break;
 	}
     }
@@ -1216,6 +1223,7 @@ compile (ptrdiff_t bytestr_length, unsigned char *bytestr_data,
       if (states[pc].is_branch_target)
 	jit_insn_label (func, &states[pc].label);
 
+      ptrdiff_t orig_pc = pc;
       int op = FETCH;
       switch (op)
 	{
@@ -2288,38 +2296,8 @@ compile (ptrdiff_t bytestr_length, unsigned char *bytestr_data,
 	  break;
 
         case Bswitch:
-	  /* The cases of Bswitch that we handle (which in theory is
-	     all of them) are done in Bconstant, below.  This is done
-	     due to a design issue with Bswitch -- it should have
-	     taken a constant pool index inline, but instead looks for
-	     a constant on the stack.  */
-	  goto fail;
-
-	case Bconstant2:
-	  op = FETCH2;
-	  goto do_constant;
-
-	default:
-	case Bconstant:
 	  {
-	    if (op < Bconstant || op > Bconstant + vector_size)
-	      goto fail;
-
-	    op -= Bconstant;
-
-	  do_constant:
-
-	    /* See the Bswitch case for commentary.  */
-	    if (pc >= bytestr_length || bytestr_data[pc] != Bswitch)
-	      {
-		jit_value_t c = CONSTANT (func, vectorp[op]);
-		PUSH (c);
-		break;
-	      }
-
-	    /* We're compiling Bswitch instead.  */
-	    ++pc;
-	    Lisp_Object htab = vectorp[op];
+	    Lisp_Object htab = vectorp[states[orig_pc].stack->const_index];
             struct Lisp_Hash_Table *h = XHASH_TABLE (vectorp[op]);
 
 	    /* Minimum and maximum PC values for the table.  */
@@ -2366,12 +2344,10 @@ compile (ptrdiff_t bytestr_length, unsigned char *bytestr_data,
 		    EMACS_INT pcval = XINT (pc);
 
 		    /* Make sure that the label we'll need is defined.  */
-		    if (labels[pcval] == jit_label_undefined)
-		      labels[pcval] = jit_function_reserve_label (func);
+		    if (states[pcval].label == jit_label_undefined)
+		      states[pcval].label = jit_function_reserve_label (func);
 
-		    sw_labels[pcval - min_pc] = labels[pcval];
-
-		    PUSH_PC (pcval);
+		    sw_labels[pcval - min_pc] = states[pcval].label;
 		  }
 	      }
 
@@ -2379,6 +2355,25 @@ compile (ptrdiff_t bytestr_length, unsigned char *bytestr_data,
 	    jit_insn_label (func, &default_case);
 	    break;
 	  }
+
+	case Bconstant2:
+	  {
+	    op = FETCH2;
+	    jit_value_t c = CONSTANT (func, vectorp[op]);
+	    PUSH (c);
+	  }
+	  break;
+
+	case Bconstant:
+	  {
+	    op = FETCH;
+	    jit_value_t c = CONSTANT (func, vectorp[op]);
+	    PUSH (c);
+	  }
+	  break;
+
+	default:
+	  goto fail;
 	}
     }
 
@@ -2421,14 +2416,6 @@ compile (ptrdiff_t bytestr_length, unsigned char *bytestr_data,
     fail:
       jit_function_abandon (func);
       result = NULL;
-
-      /* Be sure to clean up.  */
-      while (pc_list != NULL)
-	{
-	  struct pc_list *next = pc_list->next;
-	  xfree (pc_list);
-	  pc_list = next;
-	}
     }
   else
     {
@@ -2438,9 +2425,7 @@ compile (ptrdiff_t bytestr_length, unsigned char *bytestr_data,
     }
 
   xfree (stack);
-  xfree (labels);
   xfree (sw_labels);
-  eassert (pc_list == NULL);
   free_stack_slots (stack_alloc);
 
   return result;
