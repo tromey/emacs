@@ -755,7 +755,10 @@ compile_prepass (ptrdiff_t bytestr_length, unsigned char *bytestr_data,
 	    }
 	  else
 	    {
-	      /* Already compiled this.  */
+	      /* Already compiled this, but be sure to merge
+		 states.  */
+	      if (!merge_definitions (working_stack, states[pc].stack))
+		FAIL;
 	      pc = -1;
 	    }
 	}
@@ -1062,6 +1065,11 @@ compile (ptrdiff_t bytestr_length, unsigned char *bytestr_data,
   struct op_state *states = compile_prepass (bytestr_length, bytestr_data,
 					     vectorp, vector_size, &stack_alloc,
 					     nonrest + (int) rest);
+  if (states == NULL)
+    {
+      free_stack_slots (stack_alloc);
+      return NULL;
+    }
 
   jit_function_t func = jit_function_create (emacs_jit_context,
 					     function_signature);
