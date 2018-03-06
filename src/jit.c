@@ -768,6 +768,7 @@ compile_prepass (ptrdiff_t bytestr_length, unsigned char *bytestr_data,
       if (!states[pc].stack_initialized)
 	{
 	  states[pc].stack_initialized = true;
+	  states[pc].stack_depth = stack_depth;
 	  if (stack_depth > 0)
 	    {
 	      states[pc].stack = xmalloc (stack_depth * sizeof (int));
@@ -1031,6 +1032,7 @@ compile_prepass (ptrdiff_t bytestr_length, unsigned char *bytestr_data,
     }
   else
     eassert (pc_list == NULL);
+  xfree (working_stack);
 
   return result;
 }
@@ -1240,6 +1242,9 @@ compile (ptrdiff_t bytestr_length, unsigned char *bytestr_data,
       eassert (states[pc].seen);
       if (states[pc].is_branch_target)
 	jit_insn_label (func, &states[pc].label);
+
+      eassert (states[pc].stack_initialized);
+      stack_pointer = states[pc].stack_depth - 1;
 
       ptrdiff_t orig_pc = pc;
       int op = FETCH;
@@ -2384,15 +2389,17 @@ compile (ptrdiff_t bytestr_length, unsigned char *bytestr_data,
 	  break;
 
 	case Bconstant:
+	default:
 	  {
-	    op = FETCH;
-	    jit_value_t c = CONSTANT (func, vectorp[op]);
-	    PUSH (c);
+	    if (op >= Bconstant && op < Bconstant + vector_size)
+	      {
+		jit_value_t c = CONSTANT (func, vectorp[op]);
+		PUSH (c);
+	      }
+	    else
+	      goto fail;
 	  }
 	  break;
-
-	default:
-	  goto fail;
 	}
     }
 
