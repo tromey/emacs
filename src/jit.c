@@ -1081,7 +1081,10 @@ compile (ptrdiff_t bytestr_length, unsigned char *bytestr_data,
 					     vectorp, vector_size,
 					     nonrest + (int) rest);
   if (states == NULL)
-    return NULL;
+    {
+      xfree (result);
+      return NULL;
+    }
 
   jit_function_t func = jit_function_create (emacs_jit_context,
 					     function_signature);
@@ -1234,11 +1237,11 @@ compile (ptrdiff_t bytestr_length, unsigned char *bytestr_data,
 	}
     }
 
-  for (;;)
+  /* We can do the compilation in bytecode order because the prepass
+     has already computed the information we need in order to do
+     so.  */
+  while (pc < bytestr_length)
     {
-      /* We can do the compilation in bytecode order because the
-	 prepass has already computed the information we need in order
-	 to do so.  */
       eassert (states[pc].seen);
       if (states[pc].is_branch_target)
 	jit_insn_label (func, &states[pc].label);
@@ -2393,7 +2396,7 @@ compile (ptrdiff_t bytestr_length, unsigned char *bytestr_data,
 	  {
 	    if (op >= Bconstant && op < Bconstant + vector_size)
 	      {
-		jit_value_t c = CONSTANT (func, vectorp[op]);
+		jit_value_t c = CONSTANT (func, vectorp[op - Bconstant]);
 		PUSH (c);
 	      }
 	    else
