@@ -1,3 +1,14 @@
+* memory cost of alloc approach to prepass
+    (cl-loop for sym being the symbols
+	     maximize (if (and (fboundp sym)
+			       (byte-code-function-p (symbol-function sym))
+			       (stringp (aref (symbol-function sym) 1)))
+			  (* (length (aref (symbol-function sym) 1))
+			     (aref (symbol-function sym) 3))
+			0))
+  => 159309
+  which seems maybe steep
+  should redo this perhaps to find the median
 * DONE Bconstant2 -vs- switch
 * TODO switch needs prepass work
   and we can maybe do less work in the compiler
