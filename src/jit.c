@@ -566,85 +566,48 @@ find_hash_min_max_pc (struct Lisp_Hash_Table *htab,
   return true;
 }
 
-struct stack_slot
-{
-  int const_index;
-  struct stack_slot *previous;
-
-  struct stack_slot *alloc_next;
-};
-
 struct op_state
 {
   bool is_branch_target;
   bool is_fallthrough_target;
   bool seen;
-  int depth_on_entry;
-  struct stack_slot *stack;
+  bool stack_initialized;
+  int stack_depth;
+  /* A stack is only allocated if STACK_DEPTH is nonzero.  Each
+     element is the index into the constant pool of the value, or -1
+     if the value is not a constant.  */
+  int *stack;
 
   /* Used in pass 2.  */
   jit_label_t label;
 };
 
 static void
-free_stack_slots (struct stack_slot *head)
+free_state (struct op_state *state, ptrdiff_t len)
 {
-  while (head != NULL)
-    {
-      struct stack_slot *next = head->alloc_next;
-      xfree (head);
-      head = next;
-    }
-}
-
-static struct stack_slot *
-new_stack_slot (int index, struct stack_slot *previous,
-		struct stack_slot **head)
-{
-  struct stack_slot *result = xmalloc (sizeof (struct stack_slot));
-
-  result->const_index = index;
-  result->previous = previous;
-  result->alloc_next = *head;
-  *head = result;
-
-  return result;
-}
-
-static int
-compute_stack_depth (struct stack_slot *slot)
-{
-  int result = 0;
-  while (slot != NULL)
-    {
-      slot = slot->previous;
-      ++result;
-    }
-  return result;
+  for (ptrdiff_t i = 0; i < len; ++i)
+    xfree (state[i].stack);
+  xfree (state);
 }
 
 static bool
-merge_definitions (struct stack_slot *from, struct stack_slot *to)
+merge_definitions (int *from, int *to, int depth)
 {
-  while (from != to && from != NULL && to != NULL)
-    {
-      if (from->const_index != to->const_index)
-	to->const_index = -1;
+  bool result = true;
 
-      from = from->previous;
-      to = to->previous;
-    }
+  for (int i = 0; i < depth; ++i)
+    if (from[i] != to[i])
+      {
+	result = false;
+	to[i] = -1;
+      }
 
-  /* If tails are shared or both are NULL, all is well.  Otherwise, we
-     have a depth mismatch and we should abandon this compilation.  */
-  return from == to;
+  return result;
 }
 
-#define PREPASS_POP						\
-  working_stack = working_stack->previous
+#define PREPASS_POP --stack_depth
 
-#define PREPASS_PUSH(val)					\
-  working_stack = new_stack_slot (val, working_stack, head)
+#define PREPASS_PUSH(val) working_stack[stack_depth++] = val
 
 struct stack_effect
 {
@@ -656,25 +619,56 @@ struct prepass_pc_list
 {
   /* PC at which to (re-)start compilation.  */
   int pc;
-  /* Saved stack pointer.  */
-  struct stack_slot *working_stack;
   struct prepass_pc_list *next;
 };
 
-#define PREPASS_PUSH_PC(insn)				\
-  do {							\
-    struct prepass_pc_list *new				\
-      = xmalloc (sizeof (struct prepass_pc_list));	\
-    new->pc = insn;					\
-    new->working_stack = working_stack;			\
-    new->next = pc_list;				\
-    pc_list = new;					\
-  } while (0)
+static bool
+prepass_push_pc (struct op_state *states, ptrdiff_t target_pc,
+		 int stack_depth, int *working_stack,
+		 struct prepass_pc_list **head)
+{
+  if (!states[target_pc].is_branch_target)
+    {
+      states[target_pc].is_branch_target = true;
+      states[target_pc].label = jit_label_undefined;
+    }
+
+  if (!states[target_pc].stack_initialized)
+    {
+      states[target_pc].stack_initialized = true;
+      states[target_pc].stack_depth = stack_depth;
+      if (stack_depth > 0)
+	{
+	  states[target_pc].stack = xmalloc (stack_depth * sizeof (int));
+	  memcpy (states[target_pc].stack, working_stack,
+		  stack_depth * sizeof (int));
+	}
+    }
+  else
+    {
+      if (stack_depth != states[target_pc].stack_depth)
+	return false;
+
+      if (merge_definitions (working_stack, states[target_pc].stack,
+			     stack_depth))
+	{
+	  /* Don't need to re-check  */
+	  return true;
+	}
+    }
+
+  struct prepass_pc_list *new = xmalloc (sizeof (struct prepass_pc_list));
+  new->pc = target_pc;
+  new->next = *head;
+  *head = new;
+  return true;
+}
 
 static struct op_state *
 compile_prepass (ptrdiff_t bytestr_length, unsigned char *bytestr_data,
+		 int max_stack_depth,
 		 Lisp_Object *vectorp, ptrdiff_t vector_size,
-		 struct stack_slot **head, ptrdiff_t total_args)
+		 ptrdiff_t total_args)
 {
 #define DEFINE(name, opnum, npop, npush) \
   [opnum] = {npop, npush},
@@ -698,6 +692,9 @@ compile_prepass (ptrdiff_t bytestr_length, unsigned char *bytestr_data,
   } while (0)
   int failure = -1;
 
+  int stack_depth = 0;
+  int *working_stack = xmalloc (max_stack_depth * sizeof (int));
+
   struct prepass_pc_list *pc_list = NULL;
   struct op_state *result = NULL;
   struct op_state *states
@@ -705,7 +702,6 @@ compile_prepass (ptrdiff_t bytestr_length, unsigned char *bytestr_data,
 				   * sizeof (struct op_state));
 
   /* Push arguments.  */
-  struct stack_slot *working_stack = NULL;
   for (ptrdiff_t i = 0; i < total_args; ++i)
     PREPASS_PUSH (-1);
 
@@ -720,17 +716,23 @@ compile_prepass (ptrdiff_t bytestr_length, unsigned char *bytestr_data,
       else if (pc != -1)
 	{
 	  states[pc].is_fallthrough_target = true;
-	  if (states[pc].seen)
+	  if (states[pc].stack_initialized)
 	    {
-	      /* We've already seen this code, and we're expecting to fall
-		 through.  */
-	      if (!merge_definitions (working_stack, states[pc].stack))
+	      if (stack_depth != states[pc].stack_depth)
 		{
-		  /* Mismatch means compilation failure.  */
+		  /* Inconsistency.  */
 		  FAIL;
 		}
-	      /* Now resume work at some other PC.  */
-	      pc = -1;
+
+	      /* We've already processed this code, but now we're
+		 falling through.  */
+	      if (merge_definitions (working_stack, states[pc].stack,
+				     stack_depth))
+		{
+		  /* This means merging detected no changes, so resume
+		     work at some other PC.  */
+		  pc = -1;
+		}
 	    }
 	}
 
@@ -741,26 +743,20 @@ compile_prepass (ptrdiff_t bytestr_length, unsigned char *bytestr_data,
 	  struct prepass_pc_list *next;
 
 	  pc = pc_list->pc;
-	  working_stack = pc_list->working_stack;
 	  next = pc_list->next;
 	  xfree (pc_list);
 	  pc_list = next;
 
-	  states[pc].is_branch_target = true;
-	  states[pc].label = jit_label_undefined;
-	  if (!states[pc].seen)
-	    {
-	      /* Work on this one.  */
-	      break;
-	    }
-	  else
-	    {
-	      /* Already compiled this, but be sure to merge
-		 states.  */
-	      if (!merge_definitions (working_stack, states[pc].stack))
-		FAIL;
-	      pc = -1;
-	    }
+	  eassert (states[pc].stack_initialized);
+
+	  stack_depth = states[pc].stack_depth;
+	  if (stack_depth > 0)
+	    memcpy (working_stack, states[pc].stack,
+		    stack_depth * sizeof (int));
+
+	  // this might be less than perfectly efficient
+	  // suppose a PC is on the list twice at the same time
+	  // FIXME
 	}
 
       if (pc == -1 && pc_list == NULL)
@@ -769,12 +765,19 @@ compile_prepass (ptrdiff_t bytestr_length, unsigned char *bytestr_data,
 	  break;
 	}
 
-      /* FIXME this could be more efficient.  */
-      states[pc].stack = working_stack;
-      states[pc].depth_on_entry = compute_stack_depth (working_stack);
+      if (!states[pc].stack_initialized)
+	{
+	  states[pc].stack_initialized = true;
+	  if (stack_depth > 0)
+	    {
+	      states[pc].stack = xmalloc (stack_depth * sizeof (int));
+	      memcpy (states[pc].stack, working_stack,
+		      stack_depth * sizeof (int));
+	    }
+	}
+
       states[pc].seen = true;
 
-      ptrdiff_t orig_pc = pc;
       int op = FETCH;
 
       const struct stack_effect *effect = &stack_effects[op];
@@ -803,14 +806,13 @@ compile_prepass (ptrdiff_t bytestr_length, unsigned char *bytestr_data,
 	  op = FETCH2;
 	  goto do_stack_ref;
 
+	  // fixme Bstack_ref1:
 	case Bstack_ref6:
 	  op = FETCH;
 	do_stack_ref:
 	  {
-	    struct stack_slot *iter;
-	    for (iter = states[orig_pc].stack; op > 0; --op)
-	      iter = iter->previous;
-	    PREPASS_PUSH (iter->const_index);
+	    int val = working_stack[stack_depth - op];
+	    PREPASS_PUSH (val);
 	  }
 	  break;
 
@@ -835,16 +837,18 @@ compile_prepass (ptrdiff_t bytestr_length, unsigned char *bytestr_data,
 	case BdiscardN:
 	  {
 	    int save_value = -1;
+	    bool push = false;
 
 	    op = FETCH;
 	    if (op & 0x80)
 	      {
-		save_value = states[orig_pc].stack->const_index;
+		save_value = working_stack[stack_depth - 1];
+		push = true;
 		op &= 0X7F;
 	      }
 	    for (int i = 0; i < op; ++i)
 	      PREPASS_POP;
-	    if (save_value != -1)
+	    if (push)
 	      PREPASS_PUSH (save_value);
 	  }
 	  break;
@@ -857,29 +861,16 @@ compile_prepass (ptrdiff_t bytestr_length, unsigned char *bytestr_data,
 	  op = FETCH2;
 	do_stack_set:
 	  {
-	    int save_index = states[orig_pc].stack->const_index;
+	    working_stack[stack_depth - op] = working_stack[stack_depth - 1];
 	    PREPASS_POP;
-	    struct stack_slot *push_slots = NULL;
-	    struct stack_slot **next = &push_slots;
-	    for (int i = 0; i < op; ++i)
-	      {
-		ptrdiff_t pc = ((i == op - 1)
-				? save_index
-				: states[orig_pc].stack->const_index);
-		*next = new_stack_slot (pc, NULL, head);
-		next = &(*next)->previous;
-	      }
-	    if (push_slots)
-	      {
-		*next = states[orig_pc].stack;
-		states[orig_pc].stack = push_slots;
-	      }
 	  }
 	  break;
 
 	case Bgoto:
 	  op = FETCH2;
-	  PREPASS_PUSH_PC (op);
+	  if (!prepass_push_pc (states, op, stack_depth, working_stack,
+				&pc_list))
+	    FAIL;
 	  pc = -1;
 	  break;
 
@@ -887,7 +878,9 @@ compile_prepass (ptrdiff_t bytestr_length, unsigned char *bytestr_data,
 	case Bgotoifnonnil:
 	  {
 	    op = FETCH2;
-	    PREPASS_PUSH_PC (op);
+	    if (!prepass_push_pc (states, op, stack_depth, working_stack,
+				  &pc_list))
+	      FAIL;
 	    break;
 	  }
 
@@ -895,7 +888,9 @@ compile_prepass (ptrdiff_t bytestr_length, unsigned char *bytestr_data,
 	case Bgotoifnonnilelsepop:
 	  {
 	    op = FETCH2;
-	    PREPASS_PUSH_PC (op);
+	    if (!prepass_push_pc (states, op, stack_depth, working_stack,
+				  &pc_list))
+	      FAIL;
 	    PREPASS_POP;
 	    break;
 	  }
@@ -905,7 +900,9 @@ compile_prepass (ptrdiff_t bytestr_length, unsigned char *bytestr_data,
 	  {
 	    op = FETCH - 128;
 	    op += pc;
-	    PREPASS_PUSH_PC (op);
+	    if (!prepass_push_pc (states, op, stack_depth, working_stack,
+				  &pc_list))
+	      FAIL;
 	    pc = -1;
 	    break;
 	  }
@@ -915,7 +912,9 @@ compile_prepass (ptrdiff_t bytestr_length, unsigned char *bytestr_data,
 	  {
 	    op = FETCH - 128;
 	    op += pc;
-	    PREPASS_PUSH_PC (op);
+	    if (!prepass_push_pc (states, op, stack_depth, working_stack,
+				  &pc_list))
+	      FAIL;
 	    break;
 	  }
 
@@ -924,7 +923,9 @@ compile_prepass (ptrdiff_t bytestr_length, unsigned char *bytestr_data,
 	  {
 	    op = FETCH - 128;
 	    op += pc;
-	    PREPASS_PUSH_PC (op);
+	    if (!prepass_push_pc (states, op, stack_depth, working_stack,
+				  &pc_list))
+	      FAIL;
 	    PREPASS_POP;
 	    break;
 	  }
@@ -939,21 +940,22 @@ compile_prepass (ptrdiff_t bytestr_length, unsigned char *bytestr_data,
 	  PREPASS_POP;
 	  /* The value pushed on exception comes from nowhere.  */
 	  PREPASS_PUSH (-1);
-	  PREPASS_PUSH_PC (op);
+	  if (!prepass_push_pc (states, op, stack_depth, working_stack,
+				&pc_list))
+	    FAIL;
 	  PREPASS_POP;
 	  pc = -1;
 	  break;
 
 	case Bswitch:
 	  {
-	    if (states[orig_pc].stack == NULL
-		|| states[orig_pc].stack->const_index == -1)
+	    if (stack_depth == 0 || working_stack[stack_depth - 1] == -1)
 	      {
 		/* We require a constant for Bswitch.  */
 		FAIL;
 	      }
 
-            Lisp_Object table = vectorp[states[orig_pc].stack->const_index];
+            Lisp_Object table = vectorp[working_stack[stack_depth - 1]];
 	    if (!HASH_TABLE_P (table))
 	      FAIL;
 	    struct Lisp_Hash_Table *h = XHASH_TABLE (table);
@@ -968,7 +970,9 @@ compile_prepass (ptrdiff_t bytestr_length, unsigned char *bytestr_data,
 		    if (!INTEGERP (pc))
 		      FAIL;
 		    EMACS_INT pcval = XINT (pc);
-		    PREPASS_PUSH_PC (pcval);
+		    if (!prepass_push_pc (states, pcval, stack_depth,
+					  working_stack, &pc_list))
+		      FAIL;
 		  }
 	      }
 	  }
@@ -1014,7 +1018,7 @@ compile_prepass (ptrdiff_t bytestr_length, unsigned char *bytestr_data,
 	  xfree (pc_list);
 	  pc_list = next;
 	}
-      xfree (states);
+      free_state (states, bytestr_length);
     }
   else
     eassert (pc_list == NULL);
@@ -1024,7 +1028,7 @@ compile_prepass (ptrdiff_t bytestr_length, unsigned char *bytestr_data,
 
 static struct subr_function *
 compile (ptrdiff_t bytestr_length, unsigned char *bytestr_data,
-	 EMACS_INT stack_depth, Lisp_Object *vectorp,
+	 EMACS_INT max_stack_depth, Lisp_Object *vectorp,
 	 ptrdiff_t vector_size, Lisp_Object args_template)
 {
   int type;
@@ -1061,20 +1065,17 @@ compile (ptrdiff_t bytestr_length, unsigned char *bytestr_data,
 	}
     }
 
-  struct stack_slot *stack_alloc = NULL;
   struct op_state *states = compile_prepass (bytestr_length, bytestr_data,
-					     vectorp, vector_size, &stack_alloc,
+					     max_stack_depth,
+					     vectorp, vector_size,
 					     nonrest + (int) rest);
   if (states == NULL)
-    {
-      free_stack_slots (stack_alloc);
-      return NULL;
-    }
+    return NULL;
 
   jit_function_t func = jit_function_create (emacs_jit_context,
 					     function_signature);
   ptrdiff_t pc = 0;
-  jit_value_t *stack = (jit_value_t *) xmalloc (stack_depth
+  jit_value_t *stack = (jit_value_t *) xmalloc (max_stack_depth
 						* sizeof (jit_value_t));
   int stack_pointer = -1;
   /* Temporary array used only for switches.  */
@@ -1088,7 +1089,7 @@ compile (ptrdiff_t bytestr_length, unsigned char *bytestr_data,
   for (int i = 0; i < bytestr_length; ++i)
     sw_labels[i] = jit_label_undefined;
 
-  for (int i = 0; i < stack_depth; ++i)
+  for (int i = 0; i < max_stack_depth; ++i)
     stack[i] = jit_value_create (func, jit_type_void_ptr);
 
   /* This is a placeholder; once we know how much space we'll need, we
@@ -2305,7 +2306,8 @@ compile (ptrdiff_t bytestr_length, unsigned char *bytestr_data,
 
         case Bswitch:
 	  {
-	    Lisp_Object htab = vectorp[states[orig_pc].stack->const_index];
+	    Lisp_Object htab
+	      = vectorp[states[orig_pc].stack[stack_pointer]];
             struct Lisp_Hash_Table *h = XHASH_TABLE (vectorp[op]);
 
 	    /* Minimum and maximum PC values for the table.  */
@@ -2434,7 +2436,7 @@ compile (ptrdiff_t bytestr_length, unsigned char *bytestr_data,
 
   xfree (stack);
   xfree (sw_labels);
-  free_stack_slots (stack_alloc);
+  free_state (states, bytestr_length);
 
   return result;
 }
