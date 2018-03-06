@@ -37,13 +37,13 @@ along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>.  */
 
 #define BYTE_CODES							\
 DEFINE (Bstack_ref, 0, 0, 0) /* Actually, Bstack_ref+0 is not implemented: use dup.  */ \
-DEFINE (Bstack_ref1, 1, 0, 1)						\
-DEFINE (Bstack_ref2, 2, 0, 1)						\
-DEFINE (Bstack_ref3, 3, 0, 1)						\
-DEFINE (Bstack_ref4, 4, 0, 1)						\
-DEFINE (Bstack_ref5, 5, 0, 1)						\
-DEFINE (Bstack_ref6, 6, 0, 1)						\
-DEFINE (Bstack_ref7, 7, 0, 1)						\
+DEFINE (Bstack_ref1, 1, -1, -1)						\
+DEFINE (Bstack_ref2, 2, -1, -1)						\
+DEFINE (Bstack_ref3, 3, -1, -1)						\
+DEFINE (Bstack_ref4, 4, -1, -1)						\
+DEFINE (Bstack_ref5, 5, -1, -1)						\
+DEFINE (Bstack_ref6, 6, -1, -1)						\
+DEFINE (Bstack_ref7, 7, -1, -1)						\
 DEFINE (Bvarref, 010, 0, 1)						\
 DEFINE (Bvarref1, 011, 0, 1)						\
 DEFINE (Bvarref2, 012, 0, 1)						\

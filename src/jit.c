@@ -806,12 +806,20 @@ compile_prepass (ptrdiff_t bytestr_length, unsigned char *bytestr_data,
 	  op = FETCH2;
 	  goto do_stack_ref;
 
-	  // fixme Bstack_ref1:
 	case Bstack_ref6:
 	  op = FETCH;
+	  goto do_stack_ref;
+
+	case Bstack_ref1:
+	case Bstack_ref2:
+	case Bstack_ref3:
+	case Bstack_ref4:
+	case Bstack_ref5:
+	  op -= Bstack_ref;
+
 	do_stack_ref:
 	  {
-	    int val = working_stack[stack_depth - op];
+	    int val = working_stack[stack_depth - 1 - op];
 	    PREPASS_PUSH (val);
 	  }
 	  break;
@@ -861,7 +869,8 @@ compile_prepass (ptrdiff_t bytestr_length, unsigned char *bytestr_data,
 	  op = FETCH2;
 	do_stack_set:
 	  {
-	    working_stack[stack_depth - op] = working_stack[stack_depth - 1];
+	    working_stack[stack_depth - 1 - op]
+	      = working_stack[stack_depth - 1];
 	    PREPASS_POP;
 	  }
 	  break;
