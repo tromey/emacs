@@ -689,7 +689,7 @@ compile_prepass (ptrdiff_t bytestr_length, unsigned char *bytestr_data,
   int failure = -1;
 
   int stack_depth = 0;
-  int *working_stack = xmalloc (max_stack_depth * sizeof (int));
+  int *working_stack = xmalloc ((max_stack_depth + 1) * sizeof (int));
 
   struct prepass_pc_list *pc_list = NULL;
   struct op_state *result = NULL;
@@ -845,20 +845,15 @@ compile_prepass (ptrdiff_t bytestr_length, unsigned char *bytestr_data,
 
 	case BdiscardN:
 	  {
-	    int save_value = -1;
-	    bool push = false;
-
 	    op = FETCH;
 	    if (op & 0x80)
 	      {
-		save_value = working_stack[stack_depth - 1];
-		push = true;
 		op &= 0X7F;
+		working_stack[stack_depth - 1 - op]
+		  = working_stack[stack_depth - 1];
 	      }
 	    for (int i = 0; i < op; ++i)
 	      PREPASS_POP;
-	    if (push)
-	      PREPASS_PUSH (save_value);
 	  }
 	  break;
 

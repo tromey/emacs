@@ -10,6 +10,9 @@
   which seems maybe steep
   should redo this perhaps to find the median
 * DONE Bconstant2 -vs- switch
+* TODO Bswitch could be better
+  for example we could more directly the case where all keys are integers
+  either by a jump table if they are compact, or by a binary search
 * TODO switch needs prepass work
   and we can maybe do less work in the compiler
   for example the Bconstant handling

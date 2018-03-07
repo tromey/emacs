@@ -36,7 +36,7 @@ along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>.  */
 */
 
 #define BYTE_CODES							\
-DEFINE (Bstack_ref, 0, 0, 0) /* Actually, Bstack_ref+0 is not implemented: use dup.  */ \
+DEFINE (Bstack_ref, 0, -2, -2) /* Actually, Bstack_ref+0 is not implemented: use dup.  */ \
 DEFINE (Bstack_ref1, 1, -1, -1)						\
 DEFINE (Bstack_ref2, 2, -1, -1)						\
 DEFINE (Bstack_ref3, 3, -1, -1)						\
@@ -86,8 +86,8 @@ DEFINE (Bunbind6, 056, 0, 0)						\
 DEFINE (Bunbind7, 057, 0, 0)						\
 									\
 DEFINE (Bpophandler, 060, 0, 0)						\
-DEFINE (Bpushconditioncase, 061, 0, 0)				\
-DEFINE (Bpushcatch, 062, 0, 0)						\
+DEFINE (Bpushconditioncase, 061, -1, -1)				\
+DEFINE (Bpushcatch, 062, -11, -1)					\
 									\
 DEFINE (Bnth, 070, 2, 1)						\
 DEFINE (Bsymbolp, 071, 1, 1)						\
