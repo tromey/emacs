@@ -2331,6 +2331,9 @@ compile (ptrdiff_t bytestr_length, unsigned char *bytestr_data,
 	      = vectorp[states[orig_pc].stack[stack_pointer]];
             struct Lisp_Hash_Table *h = XHASH_TABLE (htab);
 
+	    /* Pop the hash table from the stack.  */
+	    --stack_pointer;
+
 	    /* Minimum and maximum PC values for the table.  */
 	    EMACS_INT min_pc = bytestr_length, max_pc = 0;
 	    if (!find_hash_min_max_pc (h, &min_pc, &max_pc))
