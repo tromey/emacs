@@ -3018,7 +3018,6 @@ funcall_lambda (Lisp_Object fun, ptrdiff_t nargs,
 	    Ffetch_bytecode (fun);
 
 #ifdef HAVE_LIBJIT
-#if 1
 	  if (initialized)
 	    {
 	      struct Lisp_Vector *vec = XVECTOR (fun);
@@ -3031,7 +3030,6 @@ funcall_lambda (Lisp_Object fun, ptrdiff_t nargs,
 				     (struct subr_function *) vec->contents[COMPILED_JIT_CODE],
 				     nargs, arg_vector);
 	    }
-#endif
 #endif /* HAVE_LIBJIT */
 
 	  return exec_byte_code (AREF (fun, COMPILED_BYTECODE),

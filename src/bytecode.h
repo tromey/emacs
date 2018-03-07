@@ -106,7 +106,7 @@ DEFINE (Blist3, 0105, 3, 1)						\
 DEFINE (Blist4, 0106, 4, 1)						\
 DEFINE (Blength, 0107, 1, 1)						\
 DEFINE (Baref, 0110, 2, 1)						\
-DEFINE (Baset, 0111, 2, 1)						\
+DEFINE (Baset, 0111, 3, 1)						\
 DEFINE (Bsymbol_value, 0112, 1, 1)					\
 DEFINE (Bsymbol_function, 0113, 1, 1)					\
 DEFINE (Bset, 0114, 2, 1)						\

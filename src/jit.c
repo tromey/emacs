@@ -605,9 +605,17 @@ merge_definitions (int *from, int *to, int depth)
   return result;
 }
 
-#define PREPASS_POP --stack_depth
+#define PREPASS_POP				\
+  do {						\
+    --stack_depth;				\
+    eassert (stack_depth >= 0);			\
+  } while (0)
 
-#define PREPASS_PUSH(val) working_stack[stack_depth++] = val
+#define PREPASS_PUSH(val)			\
+  do {						\
+    eassert (stack_depth < max_stack_depth);	\
+    working_stack[stack_depth++] = val;		\
+  } while (0)
 
 struct stack_effect
 {
@@ -683,10 +691,11 @@ compile_prepass (ptrdiff_t bytestr_length, unsigned char *bytestr_data,
 
 #define FAIL					\
   do {						\
-    failure = __LINE__;				\
+    /* This can be handy when debugging.   */	\
+    /* failure = __LINE__; */			\
     goto fail;					\
   } while (0)
-  int failure = -1;
+  /* int failure = -1; */
 
   int stack_depth = 0;
   int *working_stack = xmalloc ((max_stack_depth + 1) * sizeof (int));
@@ -970,10 +979,10 @@ compile_prepass (ptrdiff_t bytestr_length, unsigned char *bytestr_data,
 	      {
 		if (!NILP (HASH_HASH (h, i)))
 		  {
-		    Lisp_Object pc = HASH_VALUE (h, i);
-		    if (!INTEGERP (pc))
+		    Lisp_Object target_pc = HASH_VALUE (h, i);
+		    if (!INTEGERP (target_pc))
 		      FAIL;
-		    EMACS_INT pcval = XINT (pc);
+		    EMACS_INT pcval = XINT (target_pc);
 		    if (!prepass_push_pc (states, pcval, stack_depth,
 					  working_stack, &pc_list))
 		      FAIL;
@@ -1030,6 +1039,11 @@ compile_prepass (ptrdiff_t bytestr_length, unsigned char *bytestr_data,
 
   return result;
 }
+
+#define CHECK_BRANCH(Newpc)					\
+  do {								\
+    eassert (states[Newpc].stack_depth == stack_pointer + 1);	\
+  } while (0)
 
 static struct subr_function *
 compile (ptrdiff_t bytestr_length, unsigned char *bytestr_data,
@@ -1239,7 +1253,14 @@ compile (ptrdiff_t bytestr_length, unsigned char *bytestr_data,
      so.  */
   while (pc < bytestr_length)
     {
-      eassert (states[pc].seen);
+      /* Sometimes the byte compiler can emit dead code.  We can just
+	 skip that.  E.g., disassemble "set-locale-environment" and
+	 look for the redundant "goto" after the "switch".  */
+      while (pc < bytestr_length && !states[pc].seen)
+	++pc;
+      if (pc == bytestr_length)
+	break;
+
       /* Always emit a label because sometimes an instruction will
 	 have to branch to the next instruction -- but this isn't
 	 explicitly accounted for by "is_branch_target".  */
@@ -1424,8 +1445,9 @@ compile (ptrdiff_t bytestr_length, unsigned char *bytestr_data,
 
 	case Bgoto:
 	  op = FETCH2;
-	  eassert (states[op].is_branch_target);
+	  CHECK_BRANCH (op);
 	  jit_insn_branch (func, &states[op].label);
+	  orig_pc = -1;
 	  break;
 
 	case Bgotoifnil:
@@ -1433,7 +1455,7 @@ compile (ptrdiff_t bytestr_length, unsigned char *bytestr_data,
 	    jit_value_t v1 = POP;
 	    jit_value_t compare = eq_nil (func, v1);
 	    op = FETCH2;
-	    eassert (states[op].is_branch_target);
+	    CHECK_BRANCH (op);
 	    jit_insn_branch_if (func, compare, &states[op].label);
 	    break;
 	  }
@@ -1443,7 +1465,7 @@ compile (ptrdiff_t bytestr_length, unsigned char *bytestr_data,
 	    jit_value_t val = POP;
 	    jit_value_t compare = eq_nil (func, val);
 	    op = FETCH2;
-	    eassert (states[op].is_branch_target);
+	    CHECK_BRANCH (op);
 	    jit_insn_branch_if_not (func, compare, &states[op].label);
 	    break;
 	  }
@@ -1453,7 +1475,7 @@ compile (ptrdiff_t bytestr_length, unsigned char *bytestr_data,
 	    jit_value_t v1 = TOP;
 	    jit_value_t compare = eq_nil (func, v1);
 	    op = FETCH2;
-	    eassert (states[op].is_branch_target);
+	    CHECK_BRANCH (op);
 	    jit_insn_branch_if (func, compare, &states[op].label);
 	    DISCARD (1);
 	    break;
@@ -1465,7 +1487,7 @@ compile (ptrdiff_t bytestr_length, unsigned char *bytestr_data,
 	    jit_value_t v1 = TOP;
 	    jit_value_t compare = eq_nil (func, v1);
 	    op = FETCH2;
-	    eassert (states[op].is_branch_target);
+	    CHECK_BRANCH (op);
 	    jit_insn_branch_if_not (func, compare, &states[op].label);
 	    DISCARD (1);
 	    break;
@@ -1476,8 +1498,9 @@ compile (ptrdiff_t bytestr_length, unsigned char *bytestr_data,
 	  {
 	    op = FETCH - 128;
 	    op += pc;
-	    eassert (states[op].is_branch_target);
+	    CHECK_BRANCH (op);
 	    jit_insn_branch (func, &states[op].label);
+	    orig_pc = -1;
 	    break;
 	  }
 
@@ -1487,7 +1510,7 @@ compile (ptrdiff_t bytestr_length, unsigned char *bytestr_data,
 	    jit_value_t compare = eq_nil (func, v1);
 	    op = FETCH - 128;
 	    op += pc;
-	    eassert (states[op].is_branch_target);
+	    CHECK_BRANCH (op);
 	    jit_insn_branch_if (func, compare, &states[op].label);
 	    break;
 	  }
@@ -1498,7 +1521,7 @@ compile (ptrdiff_t bytestr_length, unsigned char *bytestr_data,
 	    jit_value_t compare = eq_nil (func, v1);
 	    op = FETCH - 128;
 	    op += pc;
-	    eassert (states[op].is_branch_target);
+	    CHECK_BRANCH (op);
 	    jit_insn_branch_if_not (func, compare, &states[op].label);
 	    break;
 	  }
@@ -1509,7 +1532,7 @@ compile (ptrdiff_t bytestr_length, unsigned char *bytestr_data,
 	    jit_value_t compare = eq_nil (func, v1);
 	    op = FETCH - 128;
 	    op += pc;
-	    eassert (states[op].is_branch_target);
+	    CHECK_BRANCH (op);
 	    jit_insn_branch_if (func, compare, &states[op].label);
 	    DISCARD (1);
 	    break;
@@ -1521,7 +1544,7 @@ compile (ptrdiff_t bytestr_length, unsigned char *bytestr_data,
 	    jit_value_t compare = eq_nil (func, v1);
 	    op = FETCH - 128;
 	    op += pc;
-	    eassert (states[op].is_branch_target);
+	    CHECK_BRANCH (op);
 	    jit_insn_branch_if_not (func, compare, &states[op].label);
 	    DISCARD (1);
 	    break;
@@ -1529,6 +1552,7 @@ compile (ptrdiff_t bytestr_length, unsigned char *bytestr_data,
 
 	case Breturn:
 	  jit_insn_return (func, TOP);
+	  orig_pc = -1;
 	  break;
 
 	case Bdiscard:
@@ -1627,7 +1651,7 @@ compile (ptrdiff_t bytestr_length, unsigned char *bytestr_data,
 	    cond = jit_insn_call_native (func, "sys_setjmp", setjmp,
 					 setjmp_signature,
 					 &jmp, 1, JIT_CALL_NOTHROW);
-	    eassert (states[pc].is_branch_target);
+	    CHECK_BRANCH (pc);
 	    jit_insn_branch_if_not (func, cond, &states[pc].label);
 
 	    /* Something threw to here.  */
@@ -1639,9 +1663,9 @@ compile (ptrdiff_t bytestr_length, unsigned char *bytestr_data,
 					jit_type_void_ptr);
 
 	    PUSH (val);
-	    eassert (states[handler_pc].is_branch_target);
+	    CHECK_BRANCH (handler_pc);
 	    jit_insn_branch (func, &states[handler_pc].label);
-
+	    orig_pc = -1;
 	    break;
 	  }
 
@@ -2406,6 +2430,10 @@ compile (ptrdiff_t bytestr_length, unsigned char *bytestr_data,
 	  }
 	  break;
 	}
+
+      /* Double check that the prepass and this pass agree about stack
+	 effects.  */
+      eassert (orig_pc == -1 || states[pc].stack_depth == stack_pointer + 1);
     }
 
   if (scratch_slots_needed > 0)
