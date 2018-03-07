@@ -1101,8 +1101,8 @@ compile (ptrdiff_t bytestr_length, unsigned char *bytestr_data,
 
   for (int i = 0; i < bytestr_length; ++i)
     {
-      sw_labels[i] = jit_label_undefined;
       states[i].label = jit_label_undefined;
+      sw_labels[i] = jit_label_undefined;
     }
 
   for (int i = 0; i < max_stack_depth; ++i)
