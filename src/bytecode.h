@@ -171,7 +171,7 @@ DEFINE (Bgotoifnilelsepop, 0205, -1, -1)				\
 DEFINE (Bgotoifnonnilelsepop, 0206, -1, -1)				\
 DEFINE (Breturn, 0207, 1, 0)						\
 DEFINE (Bdiscard, 0210, 1, 0)						\
-DEFINE (Bdup, 0211, 0, 1)						\
+DEFINE (Bdup, 0211, -1, -1)						\
 									\
 DEFINE (Bsave_excursion, 0212, 0, 0)					\
 DEFINE (Bsave_window_excursion, 0213, 1, 1) /* Obsolete since Emacs-24.1.  */ \

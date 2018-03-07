@@ -627,11 +627,7 @@ prepass_push_pc (struct op_state *states, ptrdiff_t target_pc,
 		 int stack_depth, int *working_stack,
 		 struct prepass_pc_list **head)
 {
-  if (!states[target_pc].is_branch_target)
-    {
-      states[target_pc].is_branch_target = true;
-      states[target_pc].label = jit_label_undefined;
-    }
+  states[target_pc].is_branch_target = true;
 
   if (!states[target_pc].stack_initialized)
     {
@@ -803,6 +799,10 @@ compile_prepass (ptrdiff_t bytestr_length, unsigned char *bytestr_data,
 	  ++pc;
 	  break;
 
+	case Bdup:
+	  op = 0;
+	  goto do_stack_ref;
+
 	case Bstack_ref7:
 	  op = FETCH2;
 	  goto do_stack_ref;
@@ -954,7 +954,6 @@ compile_prepass (ptrdiff_t bytestr_length, unsigned char *bytestr_data,
 				&pc_list))
 	    FAIL;
 	  PREPASS_POP;
-	  pc = -1;
 	  break;
 
 	case Bswitch:
@@ -1101,7 +1100,10 @@ compile (ptrdiff_t bytestr_length, unsigned char *bytestr_data,
   jit_function_set_meta (func, 0, result, xfree, 0);
 
   for (int i = 0; i < bytestr_length; ++i)
-    sw_labels[i] = jit_label_undefined;
+    {
+      sw_labels[i] = jit_label_undefined;
+      states[i].label = jit_label_undefined;
+    }
 
   for (int i = 0; i < max_stack_depth; ++i)
     stack[i] = jit_value_create (func, jit_type_void_ptr);
@@ -1243,8 +1245,10 @@ compile (ptrdiff_t bytestr_length, unsigned char *bytestr_data,
   while (pc < bytestr_length)
     {
       eassert (states[pc].seen);
-      if (states[pc].is_branch_target)
-	jit_insn_label (func, &states[pc].label);
+      /* Always emit a label because sometimes an instruction will
+	 have to branch to the next instruction -- but this isn't
+	 explicitly accounted for by "is_branch_target".  */
+      jit_insn_label (func, &states[pc].label);
 
       eassert (states[pc].stack_initialized);
       stack_pointer = states[pc].stack_depth - 1;
@@ -2325,7 +2329,7 @@ compile (ptrdiff_t bytestr_length, unsigned char *bytestr_data,
 	  {
 	    Lisp_Object htab
 	      = vectorp[states[orig_pc].stack[stack_pointer]];
-            struct Lisp_Hash_Table *h = XHASH_TABLE (vectorp[op]);
+            struct Lisp_Hash_Table *h = XHASH_TABLE (htab);
 
 	    /* Minimum and maximum PC values for the table.  */
 	    EMACS_INT min_pc = bytestr_length, max_pc = 0;
