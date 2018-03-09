@@ -51,7 +51,7 @@ static jit_type_t void_void_signature;
 static jit_type_t push_handler_signature;
 static jit_type_t setjmp_signature;
 
-static jit_type_t subr_signature[SUBR_MAX_ARGS];
+static jit_type_t subr_signature[SUBR_MAX_ARGS + 1];
 
 static jit_type_t ptrdiff_t_type;
 
@@ -1076,7 +1076,7 @@ compile (ptrdiff_t bytestr_length, unsigned char *bytestr_data,
 	 checking for us.  */
       result->min_args = mandatory;
 
-      if (!rest && nonrest < SUBR_MAX_ARGS)
+      if (!rest && nonrest <= SUBR_MAX_ARGS)
 	{
 	  result->max_args = nonrest;
 	  function_signature = subr_signature[nonrest];
@@ -2590,7 +2590,7 @@ syms_of_jit (void)
 void
 init_jit (void)
 {
-#define LEN SUBR_MAX_ARGS
+#define LEN (SUBR_MAX_ARGS + 1)
 
   jit_type_t params[LEN];
   int i;
