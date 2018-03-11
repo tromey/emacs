@@ -13,25 +13,27 @@
 * TODO Bswitch could be better
   for example we could more directly the case where all keys are integers
   either by a jump table if they are compact, or by a binary search
-* TODO switch needs prepass work
+* DONE switch needs prepass work
   and we can maybe do less work in the compiler
   for example the Bconstant handling
-* TODO on branch the pc=-1 stuff in compiler has to go away
-* TODO on branch we can make sequences like
+* DONE on branch the pc=-1 stuff in compiler has to go away
+  [ we want it for other reasons now ]
+* DONE on branch we can make sequences like
   (if (eq ...)) or (if (not ...)) better
   by eliminating the intermediate Qt/Qnil work
+  [ done on main branch ]
 * TODO do some dynamic type checking for some functions
   e.g., could inline Flength if we knew it was always called
   for the same type object
   could do this in the interpreter as well
   for this to work we need a recompilation framework
+  [ see the paper Stefan sent ]
 * DONE this is wrong:
   eassert (pc_list == NULL);
   have to free it instead
 * DONE libjit needs a .pc file so Nick Lloyd's configure patch will work
 * DONE configury must check for open_memstream
   or we need a string-based API for disassembly etc
-* TODO make sure that compiling closures isn't pathological
 * TODO have to insert maybe_quit calls somewhere, probably backward branches
   see also QUITP
 * TODO calls to make-byte-code should probably be treated specially
@@ -39,6 +41,10 @@
   the idea then is to compile the resulting bytecode just once,
   when compiling our method
   and arrange for the jitted code to pass the function pointer along
+* TODO make sure that compiling closures isn't pathological
+  it is - because closures construct the constant vector at runtime
+  and then call make-byte-code
+  think of a way to fix this up?
 * TODO make direct calls to certain functions
   el-compilador has a list of functions that should be "ok"
   "ok" means the user can't advise them, and they are written in C
@@ -57,7 +63,7 @@
     9:2	stack-ref 1
     10	call	  1
     11	return
-* TODO a call to another bytecode vector could use a different ABI
+* DONE a call to another bytecode vector could use a different ABI
   but only if we had a second entry point in case the lambda
   was also called some other way
 * DONE does the byte-compiler optimize mapc et al to a loop?
@@ -80,6 +86,7 @@
 * TODO hoist a bunch of constants to some sort of prologue and make
   them universally available without recreating
   should jit-compile lambdas in the constant pool as well
+  [ does this actually result in better code? ]
 * DONE remove the "##" comment from bytecomp.el
 * DONE change how unwind-protect is handled in bytecode
 * TODO things like emit_qnil_or_qt (and similar)
@@ -103,21 +110,23 @@
 * TODO we still don't free functions on GC
   how to free a single function from a context?
   or should we make a new context for each one?
+  [ there is a libjit patch pending for this ]
 * DONE jit_dump requires a different #include, but this isn't documented
 * TODO maybe we want a different calling convention for some jit functions
   like fixed args, small # args no rest args
   could do error handling in core where it already exists
 * TODO alloc a function for each symbol and mark as re-compilable?
   can we change the function type at these times?
-* TODO consider a subr calling convention instead
+* DONE consider a subr calling convention instead
   it would make each jit function shorter
   and core needs it anyhow
   could allocate a new kind of subr
   that holds on to the bytecode vector for GC
   make sure subrs are marked
   this would avoid writing to pure bytecode
-* TODO it would be nice to be able to indirect calls to natives as well
+* DONE it would be nice to be able to indirect calls to natives as well
   what would it take from libjit
+  [ with the new plan we don't need this ]
 * DONE simple branch-around-branch optimization is missing
   could not reproduce this, see branch.c
 * DONE jit branches to the retq but why?
