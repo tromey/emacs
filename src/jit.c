@@ -524,8 +524,7 @@ compile_bytecode_direct (jit_function_t func, int howmany,
 
   jit_value_t args[SUBR_MAX_ARGS + 1];
 
-  /* Copy in the known arguments, but skip the function
-     itself.  */
+  /* Copy in the known arguments.  */
   for (int i = 0; i < howmany; ++i)
     args[i] = stack[i];
 
@@ -547,26 +546,72 @@ compile_bytecode_direct (jit_function_t func, int howmany,
   return true;
 }
 
+/* Try to compile a direct call to a subr.  */
+static bool
+compile_subr_direct (jit_function_t func, int howmany,
+		     struct Lisp_Subr *subr, jit_value_t *stack,
+		     jit_value_t *result)
+{
+  if (subr->function.max_args == MANY || subr->function.max_args == UNEVALLED)
+    return false;
+
+  /* If we're going to throw, just bail.  */
+  if (howmany < subr->function.min_args || howmany > subr->function.max_args)
+    return false;
+
+  int len = subr->function.max_args;
+  jit_value_t args[SUBR_MAX_ARGS + 1];
+
+  /* Copy in the known arguments.  */
+  for (int i = 0; i < howmany; ++i)
+    args[i] = stack[i];
+
+  /* If there are optional arguments, set them all to Qnil.  */
+  if (howmany < len)
+    {
+      jit_value_t qnil = CONSTANT (func, Qnil);
+      for (int i = howmany; i < len; ++i)
+	args[i] = qnil;
+    }
+
+  void *jfunc = (void *) subr->function.function.a0;
+
+  *result = jit_insn_call_native (func, subr->symbol_name, jfunc,
+				  subr_signature[len], args, len,
+				  JIT_CALL_NOTHROW);
+  return true;
+}
+
 /* Compile a generic function call.  */
 static jit_value_t
 compile_funcall (jit_function_t func, int howmany,
 		 jit_value_t scratch, jit_value_t *stack,
 		 struct op_state *this_state, Lisp_Object *vectorp)
 {
-  /* If we see a function call to bytecode -- not indirecting via a
-     symbol -- we can compile a direct call.  This computation might
-     look like it is missing a "- 1", but HOWMANY includes the
-     function itself.  */
   int index = this_state->stack[this_state->stack_depth - howmany];
-  if (index != -1 && COMPILEDP (vectorp[index])
-      && INTEGERP (AREF (vectorp[index], COMPILED_ARGLIST)))
+  if (index != -1)
     {
+      Lisp_Object callee = vectorp[index];
       jit_value_t result;
 
-      if (compile_bytecode_direct (func, howmany - 1, index, stack + 1,
-				   vectorp, &result))
-	return result;
-      /* Fall through.  */
+      /* If we see a function call to bytecode -- not indirecting via
+	 a symbol -- we can compile a direct call.  This computation
+	 might look like it is missing a "- 1", but HOWMANY includes
+	 the function itself.  */
+      if (COMPILEDP (callee) && INTEGERP (AREF (callee, COMPILED_ARGLIST)))
+	{
+	  if (compile_bytecode_direct (func, howmany - 1, index, stack + 1,
+				       vectorp, &result))
+	    return result;
+	  /* Fall through.  */
+	}
+      else if (SUBRP (callee))
+	{
+	  if (compile_subr_direct (func, howmany - 1, XSUBR (callee),
+				   stack + 1, &result))
+	    return result;
+	  /* Fall through.  */
+	}
     }
 
   /* Just go via Ffuncall.  */
