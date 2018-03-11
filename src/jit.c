@@ -505,7 +505,7 @@ compile_bytecode_direct (jit_function_t func, int howmany,
 
   /* If this call site looks like it will cause an exception,
      don't bother.  */
-  if (howmany - 1 > nonrest || howmany - 1 < mandatory)
+  if (howmany > nonrest || howmany < mandatory)
     return false;
 
   /* I couldn't think of a way where this could end up recursing
@@ -526,8 +526,6 @@ compile_bytecode_direct (jit_function_t func, int howmany,
 
   /* Copy in the known arguments, but skip the function
      itself.  */
-  --howmany;
-  ++stack;
   for (int i = 0; i < howmany; ++i)
     args[i] = stack[i];
 
@@ -565,7 +563,7 @@ compile_funcall (jit_function_t func, int howmany,
     {
       jit_value_t result;
 
-      if (compile_bytecode_direct (func, howmany, index, stack,
+      if (compile_bytecode_direct (func, howmany - 1, index, stack + 1,
 				   vectorp, &result))
 	return result;
       /* Fall through.  */
