@@ -485,6 +485,70 @@ compile_callN (jit_function_t func, const char *name,
 			       callN_signature, args, 2, JIT_CALL_NOTHROW);
 }
 
+/* Try to compile a direct call to a bytecode function.  */
+static bool
+compile_bytecode_direct (jit_function_t func, int howmany,
+			 int index, jit_value_t *stack,
+			 Lisp_Object *vectorp, jit_value_t *result)
+{
+  struct Lisp_Vector *vec = XVECTOR (vectorp[index]);
+
+  ptrdiff_t at = XINT (vec->contents[COMPILED_ARGLIST]);
+  bool rest = (at & 128) != 0;
+  ptrdiff_t mandatory = at & 127;
+  ptrdiff_t nonrest = at >> 8;
+
+  /* If we can't compile it using a fixed-argument convention,
+     fall back.  FIXME it would be nice to relax this.  */
+  if (rest || nonrest >= SUBR_MAX_ARGS)
+    return false;
+
+  /* If this call site looks like it will cause an exception,
+     don't bother.  */
+  if (howmany - 1 > nonrest || howmany - 1 < mandatory)
+    return false;
+
+  /* I couldn't think of a way where this could end up recursing
+     into the current compilation, so this just eagerly compiles.
+     Lazy compilation could be added with a bit more effort -- the
+     main problem being what to do if it fails.  */
+  if (vec->contents[COMPILED_JIT_CODE] == NULL)
+    {
+      Lisp_Object callee;
+      XSETCOMPILED (callee, vec);
+      /* On failure just fall back to Ffuncall.  */
+      if (!emacs_jit_compile_nolock (callee))
+	return false;
+      eassert (vec->contents[COMPILED_JIT_CODE] != NULL);
+    }
+
+  jit_value_t args[SUBR_MAX_ARGS + 1];
+
+  /* Copy in the known arguments, but skip the function
+     itself.  */
+  --howmany;
+  ++stack;
+  for (int i = 0; i < howmany; ++i)
+    args[i] = stack[i];
+
+  /* If there are optional arguments, set them all to Qnil.  */
+  if (howmany < nonrest)
+    {
+      jit_value_t qnil = CONSTANT (func, Qnil);
+      for (int i = howmany; i < nonrest; ++i)
+	args[i] = qnil;
+    }
+
+  struct subr_function *subr
+    = (struct subr_function *) vec->contents[COMPILED_JIT_CODE];
+  void *jfunc = (void *) subr->function.a0;
+
+  *result = jit_insn_call_native (func, "direct call", jfunc,
+				  subr_signature[nonrest], args, nonrest,
+				  JIT_CALL_NOTHROW);
+  return true;
+}
+
 /* Compile a generic function call.  */
 static jit_value_t
 compile_funcall (jit_function_t func, int howmany,
@@ -499,65 +563,15 @@ compile_funcall (jit_function_t func, int howmany,
   if (index != -1 && COMPILEDP (vectorp[index])
       && INTEGERP (AREF (vectorp[index], COMPILED_ARGLIST)))
     {
-      struct Lisp_Vector *vec = XVECTOR (vectorp[index]);
+      jit_value_t result;
 
-      ptrdiff_t at = XINT (vec->contents[COMPILED_ARGLIST]);
-      bool rest = (at & 128) != 0;
-      ptrdiff_t mandatory = at & 127;
-      ptrdiff_t nonrest = at >> 8;
-
-      /* If we can't compile it using a fixed-argument convention,
-	 fall back.  FIXME it would be nice to relax this.  */
-      if (rest || nonrest >= SUBR_MAX_ARGS)
-	goto fallback;
-
-      /* If this call site looks like it will cause an exception,
-	 don't bother.  */
-      if (howmany - 1 > nonrest || howmany - 1 < mandatory)
-	goto fallback;
-
-      /* I couldn't think of a way where this could end up recursing
-	 into the current compilation, so this just eagerly compiles.
-	 Lazy compilation could be added with a bit more effort -- the
-	 main problem being what to do if it fails.  */
-      if (vec->contents[COMPILED_JIT_CODE] == NULL)
-	{
-	  Lisp_Object callee;
-	  XSETCOMPILED (callee, vec);
-	  /* On failure just fall back to Ffuncall.  */
-	  if (!emacs_jit_compile_nolock (callee))
-	    goto fallback;
-	  eassert (vec->contents[COMPILED_JIT_CODE] != NULL);
-	}
-
-      jit_value_t args[SUBR_MAX_ARGS + 1];
-
-      /* Copy in the known arguments, but skip the function
-	 itself.  */
-      --howmany;
-      ++stack;
-      for (int i = 0; i < howmany; ++i)
-	args[i] = stack[i];
-
-      /* If there are optional arguments, set them all to Qnil.  */
-      if (howmany < nonrest)
-	{
-	  jit_value_t qnil = CONSTANT (func, Qnil);
-	  for (int i = howmany; i < nonrest; ++i)
-	    args[i] = qnil;
-	}
-
-      struct subr_function *subr
-	= (struct subr_function *) vec->contents[COMPILED_JIT_CODE];
-      void *jfunc = (void *) subr->function.a0;
-
-      return jit_insn_call_native (func, "direct call", jfunc,
-				   subr_signature[nonrest], args, nonrest,
-				   JIT_CALL_NOTHROW);
+      if (compile_bytecode_direct (func, howmany, index, stack,
+				   vectorp, &result))
+	return result;
+      /* Fall through.  */
     }
 
   /* Just go via Ffuncall.  */
- fallback:
   return compile_callN (func, "Ffuncall", Ffuncall, howmany, scratch, stack);
 }
 
