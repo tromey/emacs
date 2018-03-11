@@ -29,6 +29,9 @@ along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>.  */
 #include <jit/jit.h>
 #include <jit/jit-dump.h>
 
+static bool emacs_jit_compile_nolock (Lisp_Object func);
+
+
 static bool emacs_jit_initialized;
 
 jit_context_t emacs_jit_context;
@@ -54,6 +57,22 @@ static jit_type_t setjmp_signature;
 static jit_type_t subr_signature[SUBR_MAX_ARGS + 1];
 
 static jit_type_t ptrdiff_t_type;
+
+struct op_state
+{
+  bool is_branch_target;
+  bool is_fallthrough_target;
+  bool seen;
+  bool stack_initialized;
+  int stack_depth;
+  /* A stack is only allocated if STACK_DEPTH is nonzero.  Each
+     element is the index into the constant pool of the value, or -1
+     if the value is not a constant.  */
+  int *stack;
+
+  /* Used in pass 2.  */
+  jit_label_t label;
+};
 
 
 /* Make a pointer constant.  */
@@ -446,6 +465,7 @@ unary_intmath (jit_function_t func, jit_value_t val, enum math_op op,
   jit_insn_store (func, val, tem);
 }
 
+/* Compile a "MANY"-style call to a specific function.  */
 static jit_value_t
 compile_callN (jit_function_t func, const char *name,
 	       Lisp_Object (*callee) (ptrdiff_t, Lisp_Object *),
@@ -463,6 +483,83 @@ compile_callN (jit_function_t func, const char *name,
 
   return jit_insn_call_native (func, name, (void *) callee,
 			       callN_signature, args, 2, JIT_CALL_NOTHROW);
+}
+
+/* Compile a generic function call.  */
+static jit_value_t
+compile_funcall (jit_function_t func, int howmany,
+		 jit_value_t scratch, jit_value_t *stack,
+		 struct op_state *this_state, Lisp_Object *vectorp)
+{
+  /* If we see a function call to bytecode -- not indirecting via a
+     symbol -- we can compile a direct call.  This computation might
+     look like it is missing a "- 1", but HOWMANY includes the
+     function itself.  */
+  int index = this_state->stack[this_state->stack_depth - howmany];
+  if (index != -1 && COMPILEDP (vectorp[index])
+      && INTEGERP (AREF (vectorp[index], COMPILED_ARGLIST)))
+    {
+      struct Lisp_Vector *vec = XVECTOR (vectorp[index]);
+
+      ptrdiff_t at = XINT (vec->contents[COMPILED_ARGLIST]);
+      bool rest = (at & 128) != 0;
+      ptrdiff_t mandatory = at & 127;
+      ptrdiff_t nonrest = at >> 8;
+
+      /* If we can't compile it using a fixed-argument convention,
+	 fall back.  FIXME it would be nice to relax this.  */
+      if (rest || nonrest >= SUBR_MAX_ARGS)
+	goto fallback;
+
+      /* If this call site looks like it will cause an exception,
+	 don't bother.  */
+      if (howmany - 1 > nonrest || howmany - 1 < mandatory)
+	goto fallback;
+
+      /* I couldn't think of a way where this could end up recursing
+	 into the current compilation, so this just eagerly compiles.
+	 Lazy compilation could be added with a bit more effort -- the
+	 main problem being what to do if it fails.  */
+      if (vec->contents[COMPILED_JIT_CODE] == NULL)
+	{
+	  Lisp_Object callee;
+	  XSETCOMPILED (callee, vec);
+	  /* On failure just fall back to Ffuncall.  */
+	  if (!emacs_jit_compile_nolock (callee))
+	    goto fallback;
+	  eassert (vec->contents[COMPILED_JIT_CODE] != NULL);
+	}
+
+      jit_value_t args[SUBR_MAX_ARGS + 1];
+
+      /* Copy in the known arguments, but skip the function
+	 itself.  */
+      --howmany;
+      ++stack;
+      for (int i = 0; i < howmany; ++i)
+	/* FIXME the mysterious +1 */
+	args[i] = stack[i + 1];
+
+      /* If there are optional arguments, set them all to Qnil.  */
+      if (howmany < nonrest)
+	{
+	  jit_value_t qnil = CONSTANT (func, Qnil);
+	  for (int i = howmany; i < nonrest; ++i)
+	    args[i] = qnil;
+	}
+
+      struct subr_function *subr
+	= (struct subr_function *) vec->contents[COMPILED_JIT_CODE];
+      void *jfunc = (void *) subr->function.a0;
+
+      return jit_insn_call_native (func, "direct call", jfunc,
+				   subr_signature[nonrest], args, nonrest,
+				   JIT_CALL_NOTHROW);
+    }
+
+  /* Just go via Ffuncall.  */
+ fallback:
+  return compile_callN (func, "Ffuncall", Ffuncall, howmany, scratch, stack);
 }
 
 static jit_value_t
@@ -565,22 +662,6 @@ find_hash_min_max_pc (struct Lisp_Hash_Table *htab,
   ++*max_pc;
   return true;
 }
-
-struct op_state
-{
-  bool is_branch_target;
-  bool is_fallthrough_target;
-  bool seen;
-  bool stack_initialized;
-  int stack_depth;
-  /* A stack is only allocated if STACK_DEPTH is nonzero.  Each
-     element is the index into the constant pool of the value, or -1
-     if the value is not a constant.  */
-  int *stack;
-
-  /* Used in pass 2.  */
-  jit_label_t label;
-};
 
 static void
 free_state (struct op_state *state, ptrdiff_t len)
@@ -699,6 +780,8 @@ compile_prepass (ptrdiff_t bytestr_length, unsigned char *bytestr_data,
 
   int stack_depth = 0;
   int *working_stack = xmalloc ((max_stack_depth + 1) * sizeof (int));
+  for (ptrdiff_t i = 0; i < max_stack_depth + 1; ++i)
+    working_stack[i] = -1;
 
   struct prepass_pc_list *pc_list = NULL;
   struct op_state *result = NULL;
@@ -1135,7 +1218,7 @@ compile (ptrdiff_t bytestr_length, unsigned char *bytestr_data,
 
   if (!parse_args)
     {
-      /* We can emit function that doesn't need to manually decipher
+      /* We can emit a function that doesn't need to manually decipher
 	 its arguments.  */
       for (ptrdiff_t i = 0; i < nonrest; ++i)
 	PUSH (jit_value_get_param (func, i));
@@ -1413,7 +1496,16 @@ compile (ptrdiff_t bytestr_length, unsigned char *bytestr_data,
 	  op -= Bcall;
 	docall:
 	  {
-	    COMPILE_CALLN (Ffuncall, op + 1);
+	    jit_value_t result;
+
+	    DISCARD (op + 1);
+	    result = compile_funcall (func, op + 1,
+				      scratch, &stack[stack_pointer],
+				      &states[orig_pc], vectorp);
+	    if (op + 1 > scratch_slots_needed)
+	      scratch_slots_needed = op + 1;
+	    PUSH (result);
+
 	    break;
 	  }
 
@@ -2490,6 +2582,39 @@ compile (ptrdiff_t bytestr_length, unsigned char *bytestr_data,
   return result;
 }
 
+static bool
+emacs_jit_compile_nolock (Lisp_Object func)
+{
+  if (!COMPILEDP (func))
+    return false;
+
+  Lisp_Object bytestr = AREF (func, COMPILED_BYTECODE);
+  /* FIXME handling the STRING_MULTIBYTE case - is it important?  */
+  if (!STRINGP (bytestr) || STRING_MULTIBYTE (bytestr))
+    return false;
+
+  ptrdiff_t bytestr_length = SBYTES (bytestr);
+
+  Lisp_Object vector = AREF (func, COMPILED_CONSTANTS);
+  if (!VECTORP (vector))
+    return false;
+
+  Lisp_Object *vectorp = XVECTOR (vector)->contents;
+
+  Lisp_Object maxdepth = AREF (func, COMPILED_STACK_DEPTH);
+  if (!NATNUMP (maxdepth))
+    return false;
+
+  struct subr_function *subr = compile (bytestr_length, SDATA (bytestr),
+					XFASTINT (maxdepth) + 1,
+					vectorp, ASIZE (vector),
+					AREF (func, COMPILED_ARGLIST));
+
+  XVECTOR (func)->contents[COMPILED_JIT_CODE] = (Lisp_Object) subr;
+
+  return subr != NULL;
+}
+
 void
 emacs_jit_compile (Lisp_Object func)
 {
@@ -2498,31 +2623,15 @@ emacs_jit_compile (Lisp_Object func)
 
   Lisp_Object bytestr = AREF (func, COMPILED_BYTECODE);
   CHECK_STRING (bytestr);
-  if (STRING_MULTIBYTE (bytestr))
-    /* BYTESTR must have been produced by Emacs 20.2 or the earlier
-       because they produced a raw 8-bit string for byte-code and now
-       such a byte-code string is loaded as multibyte while raw 8-bit
-       characters converted to multibyte form.  Thus, now we must
-       convert them back to the originally intended unibyte form.  */
-    bytestr = Fstring_as_unibyte (bytestr);
-
-  ptrdiff_t bytestr_length = SBYTES (bytestr);
 
   Lisp_Object vector = AREF (func, COMPILED_CONSTANTS);
   CHECK_VECTOR (vector);
-  Lisp_Object *vectorp = XVECTOR (vector)->contents;
 
   Lisp_Object maxdepth = AREF (func, COMPILED_STACK_DEPTH);
   CHECK_NATNUM (maxdepth);
 
   jit_context_build_start (emacs_jit_context);
-  struct subr_function *subr = compile (bytestr_length, SDATA (bytestr),
-					XFASTINT (maxdepth) + 1,
-					vectorp, ASIZE (vector),
-					AREF (func, COMPILED_ARGLIST));
-
-  XVECTOR (func)->contents[COMPILED_JIT_CODE] = (Lisp_Object) subr;
-
+  emacs_jit_compile_nolock (func);
   jit_context_build_end (emacs_jit_context);
 }
 
