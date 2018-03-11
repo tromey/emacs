@@ -479,7 +479,7 @@ compile_callN (jit_function_t func, const char *name,
   int i;
   for (i = 0; i < howmany; ++i)
     jit_insn_store_relative (func, scratch, i * sizeof (Lisp_Object),
-			     stack[1 + i]);
+			     stack[i]);
 
   return jit_insn_call_native (func, name, (void *) callee,
 			       callN_signature, args, 2, JIT_CALL_NOTHROW);
@@ -537,8 +537,7 @@ compile_funcall (jit_function_t func, int howmany,
       --howmany;
       ++stack;
       for (int i = 0; i < howmany; ++i)
-	/* FIXME the mysterious +1 */
-	args[i] = stack[i + 1];
+	args[i] = stack[i];
 
       /* If there are optional arguments, set them all to Qnil.  */
       if (howmany < nonrest)
@@ -583,15 +582,15 @@ compile_next_handlerlist (jit_function_t func)
   return hlist_ptr;
 }
 
-#define COMPILE_CALLN(FUNC, N)					\
-  do {								\
-    jit_value_t result;						\
-    DISCARD (N);						\
-    result = compile_callN (func, # FUNC, FUNC,			\
-			    N, scratch, &stack[stack_pointer]);	\
-    if (N > scratch_slots_needed)				\
-      scratch_slots_needed = N;					\
-    PUSH (result);						\
+#define COMPILE_CALLN(FUNC, N)						\
+  do {									\
+    jit_value_t result;							\
+    DISCARD (N);							\
+    result = compile_callN (func, # FUNC, FUNC,				\
+			    N, scratch, &stack[stack_pointer + 1]);	\
+    if (N > scratch_slots_needed)					\
+      scratch_slots_needed = N;						\
+    PUSH (result);							\
   } while (0)
 
 static void
@@ -1500,7 +1499,7 @@ compile (ptrdiff_t bytestr_length, unsigned char *bytestr_data,
 
 	    DISCARD (op + 1);
 	    result = compile_funcall (func, op + 1,
-				      scratch, &stack[stack_pointer],
+				      scratch, &stack[stack_pointer + 1],
 				      &states[orig_pc], vectorp);
 	    if (op + 1 > scratch_slots_needed)
 	      scratch_slots_needed = op + 1;
