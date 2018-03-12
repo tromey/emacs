@@ -5258,6 +5258,35 @@ This function is called from lisp/Makefile and leim/Makefile."
 	     (string-match "\\`/[a-zA-Z]/" file))
     (setq file (concat (substring file 1 2) ":" (substring file 2))))
   file)
+
+;;; JIT support.
 
+;;; FIXME this probably does not really belong here.
+;;; These values come partly from the byte compiler but also from inspection.
+(setq jit-direct-call-subrs
+      (delq nil
+            (mapcar (lambda (sym)
+                      (let ((fn (symbol-function sym)))
+                        (if (subrp fn)
+                            fn)))
+                    '(ldexp copysign logb float truncate floor
+                            ceiling round ffloor fceiling ftruncate fround sin
+                            cos tan asin acos atan exp log sqrt lsh ash logand
+                            logior logxor lognot byteorder sxhash length nth
+                            symbolp consp stringp listp eq memq not car cdr
+                            cons list length aref aset symbol-value
+                            symbol-function set fset get substring concat 1- 1+
+                            = > < <= >= - + max min * point goto-char insert
+                            point-max point-min char-after following-char
+                            preceding-char current-column indent-to eolp eobp
+                            bolp bobp current-buffer set-buffer interactive-p
+                            forward-char forward-word skip-chars-forward
+                            skip-chars-backward forward-line char-syntax
+                            buffer-substring delete-region narrow-to-region
+                            widen end-of-line set-marker match-beginning
+                            match-end upcase downcase string= string< equal
+                            nthcdr elt member assq nreverse setcar setcdr
+                            car-safe cdr-safe nconc / % numberp integerp
+                            sxhash))))
 
 ;;; subr.el ends here

@@ -582,6 +582,23 @@ compile_subr_direct (jit_function_t func, int howmany,
   return true;
 }
 
+/* If ARG is a symbol whose function is a subr on
+   jit-direct-call-subrs, return the subr; otherwise return NULL.  */
+static struct Lisp_Subr *
+is_direct_call (Lisp_Object arg)
+{
+  /* FIXME this can throw but we aren't allowed to throw at this
+     point.  */
+  arg = indirect_function (arg);
+  if (!SUBRP (arg))
+    return NULL;
+
+  Lisp_Object found = Fmemq (arg, Vjit_direct_call_subrs);
+  if (NILP (found))
+    return NULL;
+  return XSUBR (arg);
+}
+
 /* Compile a generic function call.  */
 static jit_value_t
 compile_funcall (jit_function_t func, int howmany,
@@ -609,6 +626,15 @@ compile_funcall (jit_function_t func, int howmany,
 	{
 	  if (compile_subr_direct (func, howmany - 1, XSUBR (callee),
 				   stack + 1, &result))
+	    return result;
+	  /* Fall through.  */
+	}
+      else if (SYMBOLP (callee))
+	{
+	  struct Lisp_Subr *subr = is_direct_call (callee);
+	  if (subr
+	      && compile_subr_direct (func, howmany - 1, subr,
+				      stack + 1, &result))
 	    return result;
 	  /* Fall through.  */
 	}
@@ -2750,6 +2776,12 @@ syms_of_jit (void)
   defsubr (&Sjit_compile);
   defsubr (&Sjit_disassemble_to_string);
   DEFSYM (Qinteractive_p, "interactive-p");
+
+  DEFVAR_LISP ("jit-direct-call-subrs", Vjit_direct_call_subrs,
+	       doc: /* A list of functions that can be called directly.
+Ordinarily the JIT will emit an indirect call via a symbol, but
+if a subr is listed here.  Direct calls are not affected
+by advice, so this should be used sparingly.  */);
 }
 
 void
