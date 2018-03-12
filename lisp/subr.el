@@ -5266,7 +5266,7 @@ This function is called from lisp/Makefile and leim/Makefile."
 (setq jit-direct-call-subrs
       (delq nil
             (mapcar (lambda (sym)
-                      (let ((fn (symbol-function sym)))
+                      (let ((fn (indirect-function sym)))
                         (if (subrp fn)
                             fn)))
                     '(ldexp copysign logb float truncate floor
@@ -5279,7 +5279,7 @@ This function is called from lisp/Makefile and leim/Makefile."
                             = > < <= >= - + max min * point goto-char insert
                             point-max point-min char-after following-char
                             preceding-char current-column indent-to eolp eobp
-                            bolp bobp current-buffer set-buffer interactive-p
+                            bolp bobp current-buffer set-buffer
                             forward-char forward-word skip-chars-forward
                             skip-chars-backward forward-line char-syntax
                             buffer-substring delete-region narrow-to-region
