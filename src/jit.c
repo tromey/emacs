@@ -522,7 +522,7 @@ compile_bytecode_direct (jit_function_t func, int howmany,
       eassert (vec->contents[COMPILED_JIT_CODE] != NULL);
     }
 
-  jit_value_t args[SUBR_MAX_ARGS + 1];
+  jit_value_t args[SUBR_MAX_ARGS];
 
   /* Copy in the known arguments.  */
   for (int i = 0; i < howmany; ++i)
@@ -560,7 +560,7 @@ compile_subr_direct (jit_function_t func, int howmany,
     return false;
 
   int len = subr->function.max_args;
-  jit_value_t args[SUBR_MAX_ARGS + 1];
+  jit_value_t args[SUBR_MAX_ARGS];
 
   /* Copy in the known arguments.  */
   for (int i = 0; i < howmany; ++i)
