@@ -724,6 +724,8 @@ enum symbol_trapped_write
   SYMBOL_TRAPPED_WRITE = 2
 };
 
+struct emacs_jit_functions;
+
 struct Lisp_Symbol
 {
   union
@@ -772,6 +774,9 @@ struct Lisp_Symbol
 
       /* The symbol's property list.  */
       Lisp_Object plist;
+
+      /* JIT information.  */
+      struct emacs_jit_functions *functions;
 
       /* Next symbol in obarray bucket, if the symbol is interned.  */
       struct Lisp_Symbol *next;
@@ -3326,6 +3331,9 @@ set_hash_value_slot (struct Lisp_Hash_Table *h, ptrdiff_t idx, Lisp_Object val)
   gc_aset (h->key_and_value, 2 * idx + 1, val);
 }
 
+/* From jit.c.  */
+extern void recompile_functions (struct Lisp_Symbol *sym);
+
 /* Use these functions to set Lisp_Object
    or pointer slots of struct Lisp_Symbol.  */
 
@@ -3333,6 +3341,7 @@ INLINE void
 set_symbol_function (Lisp_Object sym, Lisp_Object function)
 {
   XSYMBOL (sym)->u.s.function = function;
+  recompile_functions (XSYMBOL (sym));
 }
 
 INLINE void

@@ -1,3 +1,9 @@
+* stash the bytecode vector on the stash during execution
+  -> keeps it alive
+
+* the cases
+** TODO redefine function to nil -> all calls error
+
 * memory cost of alloc approach to prepass
     (cl-loop for sym being the symbols
 	     maximize (if (and (fboundp sym)

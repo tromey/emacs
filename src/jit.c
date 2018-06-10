@@ -54,7 +54,24 @@ static jit_type_t void_void_signature;
 static jit_type_t push_handler_signature;
 static jit_type_t setjmp_signature;
 
-static jit_type_t subr_signature[SUBR_MAX_ARGS];
+struct entry_point
+{
+  /* The function object.  */
+  jit_function_t function;
+  /* The entry point for this variant.  If NULL, no entry point has
+     been defined.  */
+  void *entry;
+};
+
+/* One for each number of arguments, plus MANY.  */
+#define N_FUNCTION_SLOTS (SUBR_MAX_ARGS + 1)
+
+struct emacs_jit_functions
+{
+  struct entry_point entries[N_FUNCTION_SLOTS];
+};
+
+static jit_type_t subr_signature[N_FUNCTION_SLOTS];
 
 static jit_type_t ptrdiff_t_type;
 
@@ -1219,9 +1236,9 @@ compile (ptrdiff_t bytestr_length, unsigned char *bytestr_data,
 
   /* Note that any error before this is attached to the function must
      free this object.  */
-  struct subr_function *result = xmalloc (sizeof (struct subr_function));
-  result->min_args = 0;
-  result->max_args = MANY;
+  /* struct subr_function *result = xmalloc (sizeof (struct subr_function)); */
+  /* result->min_args = 0; */
+  /* result->max_args = MANY; */
 
   jit_type_t function_signature = compiled_signature;
 
@@ -2770,6 +2787,107 @@ DEFUN ("jit-disassemble-to-string", Fjit_disassemble_to_string,
 #endif
 }
 
+/* It might happen that we can't recompile a symbol's function -- for
+   example, it could be redefined as a subr or a sexp.  In this case,
+   any lazily-compiled function will just be a trampoline that calls
+   via Ffuncall.  */
+static void
+compile_ffuncall_trampoline (jit_function_t func, int arity, Lisp_Object sym)
+{
+  jit_value_t scratch_size
+    = jit_value_create_nint_constant (func, jit_type_sys_int,
+				      ((arity + 1) * sizeof (Lisp_Object)));
+  jit_value_t allocated = jit_insn_alloca (func, scratch_size);
+
+  jit_value_t incoming[SUBR_MAX_ARGS + 1];
+  incoming[0] = CONSTANT (func, sym);
+  for (int i = 0; i < arity; ++i)
+    incoming[i + 1] = jit_value_get_param (func, i);
+
+  jit_value_t result = compile_callN (func, "Ffuncall", Ffuncall, arity + 1,
+				      allocated, incoming);
+  jit_insn_return (func, result);
+}
+
+/* Compile a trampoline that takes ACTUAL arguments and then calls the
+   function having NONREST arguments, where ACTUAL < NONREST and
+   NONREST < SUBR_MAX_ARGS.  */
+static void
+compile_forwarding_call (jit_function_t func, int actual, int nonrest)
+{
+  jit_value_t incoming[SUBR_MAX_ARGS];
+
+  for (int i = 0; i < actual; ++i)
+    incoming[i] = jit_value_get_param (func, i);
+
+  jit_value_t qnil = CONSTANT (func, Qnil);
+  for (int i = actual; i < nonrest; ++i)
+    incoming[i] = qnil;
+
+  jit_value_t result = jit_insn_call (func, NULL, fixme,
+				      fixme_signature, incoming, nonrest,
+				      JIT_CALL_NORETURN);
+  jit_insn_return (func, result);
+}
+
+static blah
+lazily_compile_function (jit_function_t func)
+{
+  struct Lisp_Symbol *sym = jit_function_get_meta (func, 0);
+  int arity = (int) jit_function_get_meta (func, 1);
+
+
+}
+
+static void
+require_one_function (struct Lisp_Symbol *sym, int n_args)
+{
+  if (n_args >= SUBR_MAX_ARGS)
+    n_args = SUBR_MAX_ARGS + 1;
+
+  if (sym->functions == NULL)
+    {
+      /* FIXME something has to free this.  */
+      sym->functions = xzalloc (sizeof (struct emacs_jit_functions));
+    }
+
+  if (sym->functions->entries[n_args].function != NULL)
+    return;
+
+  jit_function_t func  = jit_function_create (emacs_jit_context,
+					      subr_signature[n_args]);
+  sym->functions->entries[i].function = func;
+  jit_function_set_meta (func, 0, sym, NULL, 0);
+  jit_function_set_meta (func, 1, (void *) n_args, NULL, 0);
+  jit_function_set_on_demand_compiler (func, lazily_compile_function);
+
+  /* FIXME bogus cast.  */
+  sym->functions->entries[i].entry = jit_function_to_closure (func);
+}
+
+void
+recompile_functions (struct Lisp_Symbol *sym)
+{
+  if (sym->functions == NULL)
+    return;
+
+  // if NILP -> compile a single thing to throw an exception
+  // otherwise figure out which one is canonical
+  // actually no these are all lazy
+  for (int i = 0; i < N_FUNCTION_SLOTS; ++i)
+    {
+      if (sym->functions->entries[i].function.a0 == NULL)
+	continue;
+
+      /* FIXME nothing is freeing the old functions - we must attach
+	 them to the bytecode object so they can be GC'd
+	 appropriately.  */
+      sym->functions->entries[i].function.a0 = NULL;
+
+      require_one_function (sym, i);
+    }
+}
+
 void
 syms_of_jit (void)
 {
@@ -2787,7 +2905,7 @@ by advice, so this should be used sparingly.  */);
 void
 init_jit (void)
 {
-#define LEN SUBR_MAX_ARGS
+#define LEN SUBR_MAX_ARGS + 1
 
   jit_type_t params[LEN];
   int i;
@@ -2852,6 +2970,7 @@ init_jit (void)
 					       jit_type_void_ptr, params, 2,
 					       1);
   compiled_signature = callN_signature;
+  subr_signature[SUBR_MAX_ARGS] = callN_signature;
 
   params[0] = jit_type_sys_int;
   params[1] = jit_type_sys_int;
