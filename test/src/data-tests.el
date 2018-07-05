@@ -515,4 +515,38 @@ comparing the subr with a much slower lisp implementation."
                        (bound-and-true-p data-tests-foo2)
                        (bound-and-true-p data-tests-foo3)))))))
 
+(ert-deftest data-tests-bignum ()
+  (when (fboundp 'make-bignum)
+    (let ((f0 0.0)
+          (f-1 -1.0)
+          (b0 (make-bignum 0))
+          (b-1 (make-bignum -1)))
+      (should (> b0 -1))
+      (should (> b0 f-1))
+      (should (> b0 b-1))
+      (should (>= b0 -1))
+      (should (>= b0 f-1))
+      (should (>= b0 b-1))
+      (should (>= b-1 -1))
+      (should (>= b-1 f-1))
+      (should (>= b-1 b-1))
+
+      (should (< -1 b0))
+      (should (< f-1 b0))
+      (should (< b-1 b0))
+      (should (<= -1 b0))
+      (should (<= f-1 b0))
+      (should (<= b-1 b0))
+      (should (<= -1 b-1))
+      (should (<= f-1 b-1))
+      (should (<= b-1 b-1))
+
+      (should (= b0 0))
+      (should (= b0 f0))
+      (should (= b0 b0))
+
+      (should (/= b0 -1))
+      (should (/= b0 f-1))
+      (should (/= b0 b-1)))))
+
 ;;; data-tests.el ends here
