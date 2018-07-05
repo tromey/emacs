@@ -3612,6 +3612,7 @@ extern Lisp_Object listn (enum constype, ptrdiff_t, Lisp_Object, ...);
 #ifdef HAVE_GMP
 extern Lisp_Object make_bignum (long num);
 extern Lisp_Object make_bignum_unsigned (unsigned long num);
+extern Lisp_Object make_bignum_str (const char *num, int base);
 #endif
 
 /* Build a frequently used 2/3/4-integer lists.  */

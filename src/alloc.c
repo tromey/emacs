@@ -3809,6 +3809,19 @@ make_bignum_unsigned (unsigned long num)
   return obj;
 }
 
+Lisp_Object
+make_bignum_str (const char *num, int base)
+{
+  Lisp_Object obj;
+  struct Lisp_Bignum *b;
+
+  obj = allocate_misc (Lisp_Misc_Bignum);
+  b = XBIGNUM (obj);
+  mpz_init (b->value);
+  mpz_set_str (b->value, num, base);
+  return obj;
+}
+
 DEFUN ("make-bignum", Fmake_bignum, Smake_bignum, 1, 1, 0,
        doc: /* Make a bignum from FIXNUM.*/)
   (Lisp_Object fixnum)
