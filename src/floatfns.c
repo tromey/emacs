@@ -68,10 +68,6 @@ double
 extract_float (Lisp_Object num)
 {
   CHECK_ANY_NUMBER_OR_FLOAT (num);
-#ifdef HAVE_GMP
-  if (BIGNUMP (num))
-    return mpz_get_d (XBIGNUM (num)->value);
-#endif
   return XFLOATINT (num);
 }
 

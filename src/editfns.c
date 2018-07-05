@@ -4484,6 +4484,25 @@ styled_format (ptrdiff_t nargs, Lisp_Object *args, bool message)
 		conversion = 's';
 	      zero_flag = false;
 	    }
+	  else if ((conversion == 'd' || conversion == 'i'
+		    || conversion == 'o' || conversion == 'x'
+		    || conversion == 'X')
+		   && BIGNUMP (arg))
+	    {
+	      int base = 10;
+
+	      if (conversion == 'o')
+		base = 8;
+	      else if (conversion == 'x')
+		base = 16;
+	      else if (conversion == 'X')
+		base = -16;
+
+	      char *str = mpz_get_str (NULL, base, XBIGNUM (arg)->value);
+	      arg = make_unibyte_string (str, strlen (str));
+	      xfree (str);
+	      conversion = 's';
+	    }
 
 	  if (SYMBOLP (arg))
 	    {
@@ -4595,7 +4614,8 @@ styled_format (ptrdiff_t nargs, Lisp_Object *args, bool message)
 		      || conversion == 'X'))
 	    error ("Invalid format operation %%%c",
 		   STRING_CHAR ((unsigned char *) format - 1));
-	  else if (! (INTEGERP (arg) || (FLOATP (arg) && conversion != 'c')))
+	  else if (! (INTEGERP (arg) || ((BIGNUMP (arg) || FLOATP (arg))
+					 && conversion != 'c')))
 	    error ("Format specifier doesn't match argument type");
 	  else
 	    {
