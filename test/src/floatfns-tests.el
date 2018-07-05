@@ -34,4 +34,9 @@
   (should-error (ftruncate 0) :type 'wrong-type-argument)
   (should-error (fround 0) :type 'wrong-type-argument))
 
+(ert-deftest bignum-to-float ()
+  (when (bignump (+ most-positive-fixnum 1))
+    (should (eql (float (+ most-positive-fixnum 1))
+                 (+ (float most-positive-fixnum) 1)))))
+
 (provide 'floatfns-tests)

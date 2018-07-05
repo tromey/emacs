@@ -2925,6 +2925,10 @@ CHECK_FIXNAT (Lisp_Object x)
 INLINE double
 XFLOATINT (Lisp_Object n)
 {
+#ifdef HAVE_GMP
+  if (BIGNUMP (n))
+    return mpz_get_d (XBIGNUM (n)->value);
+#endif
   return FLOATP (n) ? XFLOAT_DATA (n) : XINT (n);
 }
 
