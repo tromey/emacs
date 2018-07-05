@@ -68,6 +68,7 @@
     (font-spec atom) (font-entity atom) (font-object atom)
     (vector array sequence atom)
     (user-ptr atom)
+    (bignum atom)
     ;; Plus, really hand made:
     (null symbol list sequence atom))
   "Alist of supertypes.

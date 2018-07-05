@@ -51,3 +51,8 @@
     (should-not (eq x y))
     (dotimes (i 4)
       (should (eql (aref x i) (aref y i))))))
+
+(ert-deftest bignum-1 ()
+  (let ((num (make-bignum 0)))
+    (should (atom num))
+    (should (eq (type-of num) 'bignum))))

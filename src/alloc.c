@@ -3780,6 +3780,46 @@ build_marker (struct buffer *buf, ptrdiff_t charpos, ptrdiff_t bytepos)
 }
 
 
+
+#ifdef HAVE_GMP
+
+Lisp_Object
+make_bignum (long num)
+{
+  Lisp_Object obj;
+  struct Lisp_Bignum *b;
+
+  obj = allocate_misc (Lisp_Misc_Bignum);
+  b = XBIGNUM (obj);
+  mpz_init (b->value);
+  mpz_set_si (b->value, num);
+  return obj;
+}
+
+Lisp_Object
+make_bignum_unsigned (unsigned long num)
+{
+  Lisp_Object obj;
+  struct Lisp_Bignum *b;
+
+  obj = allocate_misc (Lisp_Misc_Bignum);
+  b = XBIGNUM (obj);
+  mpz_init (b->value);
+  mpz_set_ui (b->value, num);
+  return obj;
+}
+
+DEFUN ("make-bignum", Fmake_bignum, Smake_bignum, 1, 1, 0,
+       doc: /* Make a bignum from FIXNUM.*/)
+  (Lisp_Object fixnum)
+{
+  CHECK_NUMBER (fixnum);
+  return make_bignum (XINT (fixnum));
+}
+
+#endif /* HAVE_GMP */
+
+
 /* Return a newly created vector or string with specified arguments as
    elements.  If all the arguments are characters that can fit
    in a string of events, make a string; otherwise, make a vector.
@@ -6554,6 +6594,7 @@ mark_object (Lisp_Object arg)
 	  break;
 
 	case Lisp_Misc_Ptr:
+	case Lisp_Misc_Bignum:
 	  XMISCANY (obj)->gcmarkbit = true;
 	  break;
 
@@ -6972,6 +7013,10 @@ sweep_misc (void)
 		  if (uptr->finalizer)
 		    uptr->finalizer (uptr->p);
 		}
+#endif
+#ifdef HAVE_GMP
+	      else if (mblk->markers[i].m.u_any.type == Lisp_Misc_Bignum)
+		mpz_clear (mblk->markers[i].m.u_bignum.value);
 #endif
               /* Set the type of the freed object to Lisp_Misc_Free.
                  We could leave the type alone, since nobody checks it,
@@ -7479,6 +7524,9 @@ The time is in seconds as a floating point value.  */);
   defsubr (&Smemory_info);
   defsubr (&Smemory_use_counts);
   defsubr (&Ssuspicious_object);
+#ifdef HAVE_GMP
+  defsubr (&Smake_bignum);
+#endif
 }
 
 /* When compiled with GCC, GDB might say "No enum type named

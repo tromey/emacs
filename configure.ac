@@ -4303,6 +4303,15 @@ AC_SUBST(KRB5LIB)
 AC_SUBST(DESLIB)
 AC_SUBST(KRB4LIB)
 
+LIB_GMP=
+HAVE_GMP=no
+AC_CHECK_LIB(gmp, __gmpz_init, [
+  AC_CHECK_HEADERS(gmp.h, [
+    LIB_GMP=-lgmp
+    HAVE_GMP=yes
+    AC_DEFINE(HAVE_GMP, 1, [Define to 1 if you have gmp.h and -lgmp])])])
+AC_SUBST(LIB_GMP)
+
 AC_CHECK_HEADERS(valgrind/valgrind.h)
 
 AC_CHECK_MEMBERS([struct unipair.unicode], [], [], [[#include <linux/kd.h>]])
@@ -5451,6 +5460,7 @@ AS_ECHO(["  Does Emacs use -lXaw3d?                                 ${HAVE_XAW3D
   Does Emacs use -lxft?                                   ${HAVE_XFT}
   Does Emacs use -lsystemd?                               ${HAVE_LIBSYSTEMD}
   Does Emacs use -ljansson?                               ${HAVE_JSON}
+  Does Emacs use -lgmp?                                   ${HAVE_GMP}
   Does Emacs directly use zlib?                           ${HAVE_ZLIB}
   Does Emacs have dynamic modules support?                ${HAVE_MODULES}
   Does Emacs use toolkit scroll bars?                     ${USE_TOOLKIT_SCROLL_BARS}

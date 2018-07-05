@@ -234,6 +234,8 @@ for example, (type-of 1) returns `integer'.  */)
 	case Lisp_Misc_User_Ptr:
 	  return Quser_ptr;
 #endif
+	case Lisp_Misc_Bignum:
+	  return Qbignum;
 	default:
 	  emacs_abort ();
 	}
@@ -594,6 +596,15 @@ DEFUN ("condition-variable-p", Fcondition_variable_p, Scondition_variable_p,
   (Lisp_Object object)
 {
   if (CONDVARP (object))
+    return Qt;
+  return Qnil;
+}
+
+DEFUN ("bignump", Fbignump, Sbignump, 1, 1, 0,
+       doc: /* Return t if OBJECT is a bignum.  */)
+  (Lisp_Object object)
+{
+  if (BIGNUMP (object))
     return Qt;
   return Qnil;
 }
@@ -3725,6 +3736,7 @@ syms_of_data (void)
   DEFSYM (Qthread, "thread");
   DEFSYM (Qmutex, "mutex");
   DEFSYM (Qcondition_variable, "condition-variable");
+  DEFSYM (Qbignum, "bignum");
   DEFSYM (Qfont_spec, "font-spec");
   DEFSYM (Qfont_entity, "font-entity");
   DEFSYM (Qfont_object, "font-object");
@@ -3770,6 +3782,7 @@ syms_of_data (void)
   defsubr (&Sthreadp);
   defsubr (&Smutexp);
   defsubr (&Scondition_variable_p);
+  defsubr (&Sbignump);
   defsubr (&Scar);
   defsubr (&Scdr);
   defsubr (&Scar_safe);

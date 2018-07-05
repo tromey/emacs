@@ -30,6 +30,9 @@ along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>.  */
 #include <float.h>
 #include <inttypes.h>
 #include <limits.h>
+#ifdef HAVE_GMP
+#include <gmp.h>
+#endif
 
 #include <intprops.h>
 #include <verify.h>
@@ -516,6 +519,7 @@ enum Lisp_Misc_Type
 #ifdef HAVE_MODULES
     Lisp_Misc_User_Ptr,
 #endif
+    Lisp_Misc_Bignum,
     /* This is not a type code.  It is for range checking.  */
     Lisp_Misc_Limit
   };
@@ -2456,6 +2460,18 @@ struct Lisp_Free
     union Lisp_Misc *chain;
   };
 
+#ifdef HAVE_GMP
+
+struct Lisp_Bignum
+  {
+    ENUM_BF (Lisp_Misc_Type) type : 16; /* = Lisp_Misc_Bignum */
+    bool_bf gcmarkbit : 1;
+    unsigned spacer : 15;
+    mpz_t value;
+  };
+
+#endif /* HAVE_GMP */
+
 /* To get the type field of a union Lisp_Misc, use XMISCTYPE.
    It uses one of these struct subtypes to get the type field.  */
 
@@ -2469,6 +2485,9 @@ union Lisp_Misc
     struct Lisp_Misc_Ptr u_misc_ptr;
 #ifdef HAVE_MODULES
     struct Lisp_User_Ptr u_user_ptr;
+#endif
+#ifdef HAVE_GMP
+    struct Lisp_Bignum u_bignum;
 #endif
   };
 
@@ -2518,6 +2537,19 @@ XUSER_PTR (Lisp_Object a)
   return XUNTAG (a, Lisp_Misc, struct Lisp_User_Ptr);
 }
 #endif
+
+INLINE bool
+BIGNUMP (Lisp_Object x)
+{
+  return MISCP (x) && XMISCTYPE (x) == Lisp_Misc_Bignum;
+}
+
+INLINE struct Lisp_Bignum *
+XBIGNUM (Lisp_Object a)
+{
+  eassert (BIGNUMP (a));
+  return XUNTAG (a, Lisp_Misc, struct Lisp_Bignum);
+}
 
 
 /* Forwarding pointer to an int variable.
@@ -3576,6 +3608,11 @@ extern Lisp_Object list5 (Lisp_Object, Lisp_Object, Lisp_Object, Lisp_Object,
 			  Lisp_Object);
 enum constype {CONSTYPE_HEAP, CONSTYPE_PURE};
 extern Lisp_Object listn (enum constype, ptrdiff_t, Lisp_Object, ...);
+
+#ifdef HAVE_GMP
+extern Lisp_Object make_bignum (long num);
+extern Lisp_Object make_bignum_unsigned (unsigned long num);
+#endif
 
 /* Build a frequently used 2/3/4-integer lists.  */
 

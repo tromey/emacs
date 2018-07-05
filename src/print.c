@@ -2185,6 +2185,18 @@ print_object (Lisp_Object obj, Lisp_Object printcharfun, bool escapeflag)
 	  }
 	  break;
 
+#ifdef HAVE_GMP
+	case Lisp_Misc_Bignum:
+	  {
+	    struct Lisp_Bignum *b = XBIGNUM (obj);
+	    char *str = mpz_get_str (NULL, 10, b->value);
+	    int len = strlen (str);
+	    strout (buf, len, len, printcharfun);
+	    xfree (str);
+	  }
+	  break;
+#endif
+
 	default:
 	  goto badtype;
 	}
