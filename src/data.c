@@ -2762,6 +2762,16 @@ NUMBER may be an integer or a floating point number.  */)
   char buffer[max (FLOAT_TO_STRING_BUFSIZE, INT_BUFSIZE_BOUND (EMACS_INT))];
   int len;
 
+#ifdef HAVE_GMP
+  if (BIGNUMP (number))
+    {
+      ptrdiff_t count = SPECPDL_INDEX ();
+      char *str = mpz_get_str (NULL, 10, XBIGNUM (number)->value);
+      record_unwind_protect_ptr (xfree, str);
+      return unbind_to (count, make_unibyte_string (str, strlen (str)));
+    }
+#endif
+
   CHECK_FIXNUM_OR_FLOAT (number);
 
   if (FLOATP (number))

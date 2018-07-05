@@ -580,4 +580,10 @@ comparing the subr with a much slower lisp implementation."
     (should-not (fixnump (+ most-positive-fixnum 1)))
     (should (bignump (+ most-positive-fixnum 1)))))
 
+(ert-deftest data-tests-number-to-string ()
+  (when (bignump (+ most-positive-fixnum 1))
+    (let* ((s "99999999999999999999999999999")
+           (v (read s)))
+      (should (equal (number-to-string v) s)))))
+
 ;;; data-tests.el ends here
