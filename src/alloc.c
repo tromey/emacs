@@ -3814,11 +3814,13 @@ make_bignum_str (const char *num, int base)
 {
   Lisp_Object obj;
   struct Lisp_Bignum *b;
+  int check;
 
   obj = allocate_misc (Lisp_Misc_Bignum);
   b = XBIGNUM (obj);
   mpz_init (b->value);
-  mpz_set_str (b->value, num, base);
+  check = mpz_set_str (b->value, num, base);
+  eassert (check == 0);
   return obj;
 }
 
