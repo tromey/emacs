@@ -595,12 +595,13 @@
 
 (ert-deftest test-bignum-eql ()
   "Test that `eql' works for bignums."
-  (let ((bzero (make-bignum 0)))
-    (should (eq bzero bzero))
-    ;; We could relax this, but not for now.
-    (should-not (eq bzero 0))
-    (should (eql bzero 0))
-    (should (eql 0 bzero))
-    (should (eql bzero bzero))))
+  (when (fboundp 'make-bignum)
+    (let ((bzero (make-bignum 0)))
+      (should (eq bzero bzero))
+      ;; We could relax this, but not for now.
+      (should-not (eq bzero 0))
+      (should (eql bzero 0))
+      (should (eql 0 bzero))
+      (should (eql bzero bzero)))))
 
 (provide 'fns-tests)
