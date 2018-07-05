@@ -2921,6 +2921,12 @@ CHECK_NUMBER_OR_FLOAT (Lisp_Object x)
   CHECK_TYPE (NUMBERP (x), Qnumberp, x);
 }
 
+INLINE void
+CHECK_ANY_NUMBER_OR_FLOAT (Lisp_Object x)
+{
+  CHECK_TYPE (ANY_NUMBERP (x), Qnumberp, x);
+}
+
 #define CHECK_NUMBER_OR_FLOAT_COERCE_MARKER(x)				\
   do {									\
     if (MARKERP (x))							\
