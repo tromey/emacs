@@ -98,5 +98,9 @@ otherwise, use a different charset."
   (let ((sym '\’bar))
     (should (eq (read (prin1-to-string sym)) sym))))
 
+(ert-deftest print-bignum ()
+  (when (fboundp 'make-bignum)
+    (should (equal (prin1-to-string (make-bignum 0)) "0"))))
+
 (provide 'print-tests)
 ;;; print-tests.el ends here
