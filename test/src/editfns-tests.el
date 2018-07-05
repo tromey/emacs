@@ -371,4 +371,15 @@
     (should (eq (type-of (car (nth 4 buffer-undo-list))) 'marker))
     (garbage-collect)))
 
+(ert-deftest format-bignum ()
+  (when (bignump (+ most-positive-fixnum 1))
+    (let* ((s1 "FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF")
+           (v1 (read (concat "#x" s1)))
+           (s2 "99999999999999999999999999999999")
+           (v2 (read s2)))
+      (should (> v1 most-positive-fixnum))
+      (should (equal (format "%X" v1) s1))
+      (should (> v2 most-positive-fixnum))
+      (should (equal (format "%d" v2) s2)))))
+
 ;;; editfns-tests.el ends here
