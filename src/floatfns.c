@@ -275,8 +275,27 @@ DEFUN ("abs", Fabs, Sabs, 1, 1, 0,
        doc: /* Return the absolute value of ARG.  */)
   (register Lisp_Object arg)
 {
-  CHECK_FIXNUM_OR_FLOAT (arg);
+  CHECK_NUMBER (arg);
 
+#ifdef HAVE_GMP
+  if (BIGNUMP (arg))
+    {
+      mpz_t val;
+      mpz_init (val);
+      mpz_abs (val, XBIGNUM (arg)->value);
+      arg = make_number (val);
+      mpz_clear (val);
+      return arg;
+    }
+  else if (FIXNUMP (arg) && XINT (arg) == MOST_NEGATIVE_FIXNUM)
+    {
+      mpz_t val;
+      mpz_init_set_si (val, - MOST_NEGATIVE_FIXNUM);
+      arg = make_number (val);
+      mpz_clear (val);
+      return arg;
+    }
+#endif
   if (FLOATP (arg))
     arg = make_float (fabs (XFLOAT_DATA (arg)));
   else if (XINT (arg) < 0)
