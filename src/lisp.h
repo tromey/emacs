@@ -2766,6 +2766,13 @@ NATNUMP (Lisp_Object x)
 {
   return INTEGERP (x) && 0 <= XINT (x);
 }
+INLINE bool
+ANY_NUMBERP (Lisp_Object x)	/* FIXME lame name - but didn't want
+				   to rename integer->fixnum
+				   everywhere yet */
+{
+  return INTEGERP (x) || FLOATP (x) || BIGNUMP (x);
+}
 
 INLINE bool
 RANGED_INTEGERP (intmax_t lo, Lisp_Object x, intmax_t hi)
@@ -2920,6 +2927,14 @@ CHECK_NUMBER_OR_FLOAT (Lisp_Object x)
       XSETFASTINT (x, marker_position (x));				\
     else								\
       CHECK_TYPE (NUMBERP (x), Qnumber_or_marker_p, x);			\
+  } while (false)
+
+#define CHECK_ANY_NUMBER_OR_FLOAT_COERCE_MARKER(x)			\
+  do {									\
+    if (MARKERP (x))							\
+      XSETFASTINT (x, marker_position (x));				\
+    else								\
+      CHECK_TYPE (ANY_NUMBERP (x), Qnumber_or_marker_p, x);		\
   } while (false)
 
 /* Since we can't assign directly to the CAR or CDR fields of a cons

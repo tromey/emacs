@@ -2460,10 +2460,8 @@ arithcompare (Lisp_Object num1, Lisp_Object num2,
   bool fneq;
   bool test;
 
-  if (!BIGNUMP (num1))
-    CHECK_NUMBER_OR_FLOAT_COERCE_MARKER (num1);
-  if (!BIGNUMP (num2))
-    CHECK_NUMBER_OR_FLOAT_COERCE_MARKER (num2);
+  CHECK_ANY_NUMBER_OR_FLOAT_COERCE_MARKER (num1);
+  CHECK_ANY_NUMBER_OR_FLOAT_COERCE_MARKER (num2);
 
   if (BIGNUMP (num1) || BIGNUMP (num2))
     return bignumcompare (num1, num2, comparison);
