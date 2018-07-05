@@ -34,4 +34,12 @@
   (should-error (ftruncate 0) :type 'wrong-type-argument)
   (should-error (fround 0) :type 'wrong-type-argument))
 
+(ert-deftest bignum-to-float ()
+  (when (fboundp 'make-bignum)
+    (should (= 0.0 (float (make-bignum 0))))))
+
+(ert-deftest bignum-abs ()
+  (when (fboundp 'make-bignum)
+    (should (= 1 (abs (make-bignum -1))))))
+
 (provide 'floatfns-tests)
