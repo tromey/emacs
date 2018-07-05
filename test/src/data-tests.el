@@ -549,4 +549,8 @@ comparing the subr with a much slower lisp implementation."
       (should (/= b0 f-1))
       (should (/= b0 b-1)))))
 
+(ert-deftest data-tests-bignum-to-string ()
+  (when (fboundp 'make-bignum)
+    (should (equal (number-to-string (make-bignum 0)) "0"))))
+
 ;;; data-tests.el ends here
