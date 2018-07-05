@@ -2190,9 +2190,9 @@ print_object (Lisp_Object obj, Lisp_Object printcharfun, bool escapeflag)
 	  {
 	    struct Lisp_Bignum *b = XBIGNUM (obj);
 	    char *str = mpz_get_str (NULL, 10, b->value);
+	    record_unwind_protect_ptr (xfree, str);
 	    int len = strlen (str);
 	    strout (buf, len, len, printcharfun);
-	    xfree (str);
 	  }
 	  break;
 #endif
