@@ -2816,8 +2816,165 @@ enum arithop
     Alogxor
   };
 
+#ifdef HAVE_GMP
+
+static void
+free_mpz_value (void *value_ptr)
+{
+  mpz_clear (*(mpz_t *) value_ptr);
+}
+
+#endif
+
 static Lisp_Object float_arith_driver (double, ptrdiff_t, enum arithop,
                                        ptrdiff_t, Lisp_Object *);
+
+/* We need two versions of arith_driver, because the implementation
+   differs enough between the bignum and fixnum-only variants.  */
+#ifdef HAVE_GMP
+
+static Lisp_Object
+arith_driver (enum arithop code, ptrdiff_t nargs, Lisp_Object *args)
+{
+  Lisp_Object val = Qnil;
+  ptrdiff_t argnum;
+  ptrdiff_t count = SPECPDL_INDEX ();
+  mpz_t accum;
+
+  mpz_init (accum);
+  record_unwind_protect_ptr (free_mpz_value, &accum);
+
+  switch (code)
+    {
+    case Alogior:
+    case Alogxor:
+    case Aadd:
+    case Asub:
+      /* ACCUM is already 0.  */
+      break;
+    case Amult:
+    case Adiv:
+      mpz_set_si (accum, 1);
+      break;
+    case Alogand:
+      mpz_set_si (accum, -1);
+      break;
+    default:
+      break;
+    }
+
+  for (argnum = 0; argnum < nargs; argnum++)
+    {
+      /* Using args[argnum] as argument to CHECK_NUMBER... */
+      val = args[argnum];
+      CHECK_NUMBER (val);
+
+      if (FLOATP (val))
+	return unbind_to (count,
+			  float_arith_driver (mpz_get_d (accum), argnum, code,
+					      nargs, args));
+      switch (code)
+	{
+	case Aadd:
+	  if (BIGNUMP (val))
+	    mpz_add (accum, accum, XBIGNUM (val)->value);
+	  else if (XINT (val) < 0)
+	    mpz_sub_ui (accum, accum, - XINT (val));
+	  else
+	    mpz_add_ui (accum, accum, XINT (val));
+	  break;
+	case Asub:
+	  if (! argnum)
+	    {
+	      if (BIGNUMP (val))
+		mpz_set (accum, XBIGNUM (val)->value);
+	      else
+		mpz_set_si (accum, XINT (val));
+	      if (nargs == 1)
+		mpz_neg (accum, accum);
+	    }
+	  else if (BIGNUMP (val))
+	    mpz_sub (accum, accum, XBIGNUM (val)->value);
+	  else if (XINT (val) < 0)
+	    mpz_add_ui (accum, accum, - XINT (val));
+	  else
+	    mpz_sub_ui (accum, accum, XINT (val));
+	  break;
+	case Amult:
+	  if (BIGNUMP (val))
+	    mpz_mul (accum, accum, XBIGNUM (val)->value);
+	  else
+	    mpz_mul_si (accum, accum, XINT (val));
+	  break;
+	case Adiv:
+	  if (! (argnum || nargs == 1))
+	    {
+	      if (BIGNUMP (val))
+		mpz_set (accum, XBIGNUM (val)->value);
+	      else
+		mpz_set_si (accum, XINT (val));
+	    }
+	  else
+	    {
+	      /* Note that a bignum can never be 0, so we don't need
+		 to check that case.  */
+	      if (FIXNUMP (val) && XINT (val) == 0)
+		xsignal0 (Qarith_error);
+	      if (BIGNUMP (val))
+		mpz_tdiv_q (accum, accum, XBIGNUM (val)->value);
+	      else
+		{
+		  EMACS_INT value = XINT (val);
+		  bool negate = value < 0;
+		  if (negate)
+		    value = -value;
+		  mpz_tdiv_q_ui (accum, accum, value);
+		  if (negate)
+		    mpz_neg (accum, accum);
+		}
+	    }
+	  break;
+	case Alogand:
+	  if (BIGNUMP (val))
+	    mpz_and (accum, accum, XBIGNUM (val)->value);
+	  else
+	    {
+	      mpz_t tem;
+	      mpz_init_set_ui (tem, XUINT (val));
+	      mpz_and (accum, accum, tem);
+	      mpz_clear (tem);
+	    }
+	  break;
+	case Alogior:
+	  if (BIGNUMP (val))
+	    mpz_ior (accum, accum, XBIGNUM (val)->value);
+	  else
+	    {
+	      mpz_t tem;
+	      mpz_init_set_ui (tem, XUINT (val));
+	      mpz_ior (accum, accum, tem);
+	      mpz_clear (tem);
+	    }
+	  break;
+	case Alogxor:
+	  if (BIGNUMP (val))
+	    mpz_xor (accum, accum, XBIGNUM (val)->value);
+	  else
+	    {
+	      mpz_t tem;
+	      mpz_init_set_ui (tem, XUINT (val));
+	      mpz_xor (accum, accum, tem);
+	      mpz_clear (tem);
+	    }
+	  break;
+	}
+    }
+
+  return unbind_to (count, make_number (accum));
+}
+
+#else /* HAVE_GMP */
+
 static Lisp_Object
 arith_driver (enum arithop code, ptrdiff_t nargs, Lisp_Object *args)
 {
@@ -2906,6 +3063,8 @@ arith_driver (enum arithop code, ptrdiff_t nargs, Lisp_Object *args)
   return val;
 }
 
+#endif /* not HAVE-GMP */
+
 #ifndef isnan
 # define isnan(x) ((x) != (x))
 #endif
@@ -2926,6 +3085,10 @@ float_arith_driver (double accum, ptrdiff_t argnum, enum arithop code,
 	{
 	  next = XFLOAT_DATA (val);
 	}
+#ifdef HAVE_GMP
+      else if (BIGNUMP (val))
+	next = mpz_get_d (XBIGNUM (val)->value);
+#endif
       else
 	{
 	  args[argnum] = val;    /* runs into a compiler bug. */
