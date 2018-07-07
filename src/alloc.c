@@ -6554,6 +6554,7 @@ mark_object (Lisp_Object arg)
 	  break;
 
 	case Lisp_Misc_Ptr:
+	case Lisp_Misc_Bignum:
 	  XMISCANY (obj)->gcmarkbit = true;
 	  break;
 
@@ -6972,6 +6973,10 @@ sweep_misc (void)
 		  if (uptr->finalizer)
 		    uptr->finalizer (uptr->p);
 		}
+#endif
+#ifdef HAVE_GMP
+	      else if (mblk->markers[i].m.u_any.type == Lisp_Misc_Bignum)
+		mpz_clear (mblk->markers[i].m.u_bignum.value);
 #endif
               /* Set the type of the freed object to Lisp_Misc_Free.
                  We could leave the type alone, since nobody checks it,
