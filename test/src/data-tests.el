@@ -596,4 +596,8 @@ comparing the subr with a much slower lisp implementation."
     (should (< (1- most-negative-fixnum) most-negative-fixnum))
     (should (fixnump (1- (1+ most-positive-fixnum))))))
 
+(ert-deftest data-tests-logcount ()
+  (when (bignump (+ most-positive-fixnum 1))
+    (should (= (logcount (read "#xffffffffffffffffffffffffffffffff")) 128))))
+
 ;;; data-tests.el ends here
