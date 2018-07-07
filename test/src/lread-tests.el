@@ -195,9 +195,11 @@ literals (Bug#20852)."
     (should (eq x (cdr x)))))
 
 (ert-deftest lread-long-hex-integer ()
-  (should-error
-   (read "#xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff")
-   :type 'overflow-error))
+  (if (bignump (+ most-positive-fixnum 1))
+      (should (bignump (read "#xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff")))
+    (should-error
+     (read "#xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff")
+     :type 'overflow-error)))
 
 (ert-deftest lread-test-bug-31186 ()
   (with-temp-buffer
