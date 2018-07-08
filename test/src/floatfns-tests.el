@@ -44,4 +44,9 @@
     (should (= most-positive-fixnum
                (- (abs most-negative-fixnum) 1)))))
 
+(ert-deftest bignum-logb ()
+  (when (bignump (+ most-positive-fixnum 1))
+    (should (= (+ (logb most-positive-fixnum) 1)
+               (logb (+ most-positive-fixnum 1))))))
+
 (provide 'floatfns-tests)

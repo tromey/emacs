@@ -334,7 +334,7 @@ This is the same as the exponent of a float.  */)
   (Lisp_Object arg)
 {
   EMACS_INT value;
-  CHECK_FIXNUM_OR_FLOAT (arg);
+  CHECK_NUMBER (arg);
 
   if (FLOATP (arg))
     {
@@ -351,8 +351,13 @@ This is the same as the exponent of a float.  */)
       else
 	value = MOST_POSITIVE_FIXNUM;
     }
+#ifdef HAVE_GMP
+  else if (BIGNUMP (arg))
+    value = mpz_sizeinbase (XBIGNUM (arg)->value, 2) - 1;
+#endif
   else
     {
+      eassert (FIXNUMP (arg));
       EMACS_INT i = eabs (XINT (arg));
       value = (i == 0
 	       ? MOST_NEGATIVE_FIXNUM
