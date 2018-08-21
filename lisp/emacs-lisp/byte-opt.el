@@ -1455,7 +1455,8 @@
                                   (eq (nth 2 el) orig-table))
                         ;; Jump tables are never reused, so do this exactly
                         ;; once.
-                        do (setf (nth 2 el) last-constant) and return nil))))
+                        do (setf (nth 2 el) (cons last-constant orig-table))
+                                 and return nil))))
       ;; lap = ( [ (pc . (op . arg)) ]* )
       (push (cons optr (cons bytedecomp-op (or offset 0)))
             lap)

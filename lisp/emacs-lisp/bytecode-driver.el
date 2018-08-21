@@ -162,7 +162,8 @@ Updates `bytecode-driver-object-hash'."
     (mapatoms
      (lambda (sym)
        (let ((code (symbol-function sym)))
-         (when (byte-code-function-p code)
+         (when (and (byte-code-function-p code)
+                    (stringp (aref code 1)))
            (push code all-bytecodes)
            (let ((hval (gethash code old-hash)))
              (if hval
