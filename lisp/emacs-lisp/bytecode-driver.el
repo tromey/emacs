@@ -97,7 +97,7 @@ doc string value."
 (defun bytecode-driver-function-name (serial)
   (format "J%d" serial))
 
-(defun bytecode-driver-one-function (bytecode)
+(defun bytecode-driver-one-function (symbol bytecode)
   "Compile a single function.
 Writes the object code to the appropriate location.
 Updates `bytecode-driver-object-hash'."
@@ -108,7 +108,7 @@ Updates `bytecode-driver-object-hash'."
                                              bytecode-driver-object-hash-dir)))
     (cl-incf bytecode-driver-object-counter)
     (with-temp-buffer
-      (byte2c function-name bytecode)
+      (byte2c symbol function-name bytecode)
       (write-region nil nil full-object-name))
     (puthash bytecode count bytecode-driver-object-hash)))
 
@@ -173,7 +173,7 @@ Updates `bytecode-driver-object-hash'."
                    (puthash code hval bytecode-driver-object-hash))
                ;; The function hasn't been compiled yet, so do it now.
                (message "Compiling %S" sym)
-               (bytecode-driver-one-function code)))))))
+               (bytecode-driver-one-function sym code)))))))
     (bytecode-driver-write-object-hash)
     ;; Now the old hash table only contains entries that are no longer
     ;; needed.  So, delete those object files.

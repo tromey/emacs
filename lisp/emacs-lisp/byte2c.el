@@ -194,7 +194,9 @@
            (hash-table-p (cdr value))
            (gethash (cdr value) hash))))
 
-(defun byte2c-prologue (name arglist stack-depth)
+(defun byte2c-prologue (symbol name arglist stack-depth)
+  (when symbol
+    (insert "/* From " (symbol-name symbol) "*/\n"))
   (insert "Lisp_Object " name "(")
   (ignore arglist)
   ;; fixme arglist
@@ -205,13 +207,13 @@
             ";\n"))
   (insert "  Lisp_Object *vectorp = &XVECTOR (constants)->contents;\n"))
 
-(defun byte2c (name bytecode)
+(defun byte2c (symbol name bytecode)
   (let* ((bytes (string-as-unibyte (aref bytecode 1)))
          (constants (aref bytecode 2))
          (cmap (b2c-constant-map constants))
          (lapcode (byte-decompile-bytecode bytes  constants))
          (stack-depths (byte-check-lapcode bytes lapcode (aref bytecode 0))))
-    (byte2c-prologue name (aref bytecode 0) (aref bytecode 3))
+    (byte2c-prologue symbol name (aref bytecode 0) (aref bytecode 3))
     ;; Note that because we have stack depths already computed, we can
     ;; simply compile all the code in a linear fashion.
     (let ((last-constant nil)
@@ -442,7 +444,15 @@
                 (byte-forward-line
                  (b2c-unary "Fforward_line"))
                 (byte-char-syntax
-                 (error "FIXME"))
+                 (insert "  CHECK_CHARACTER ("
+                         (b2c-local depth) ");\n"
+                         "  int c = XFIXNAT ("
+                         (b2c-local depth) ");\n"
+                         "  if (NILP (BVAR (current_buffer, enable_multibyte_characters)))\n"
+                         "    MAKE_CHAR_MULTIBYTE (c);\n"
+                         "  " (b2c-local depth) " = "
+                         "make_fixnum (" (b2c-local depth)
+                         ", syntax_code_spec[SYNTAX (c)]);\n"))
                 (byte-buffer-substring
                  (b2c-binary "Fbuffer_substring"))
                 (byte-delete-region
@@ -601,7 +611,8 @@
                             ";\n"))
                   (car last-constant)))
                 (t
-                 (error "unrecognized byte op %S" (car insn)))))))))))
+                 (error "unrecognized byte op %S" (car insn)))))))))
+    (insert "}")))
 
 (provide 'byte2c)
 
