@@ -558,4 +558,6 @@
               (t
                (error "unrecognized byte op %S" (car insn)))))))))))
 
+(provide 'byte2c)
+
 ;;; byte2c.el ends here

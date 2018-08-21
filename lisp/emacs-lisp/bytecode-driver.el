@@ -1,4 +1,4 @@
-;;; bytecode-driver.el --- Emacs plus GCC  -*- lexical-binding: t -*-
+;;; bytecode-driver.el --- compiler driver  -*- lexical-binding: t -*-
 
 ;;; Copyright (C) 2018 Free Software Foundation, Inc.
 
@@ -16,6 +16,8 @@
 
 ;; You should have received a copy of the GNU General Public License
 ;; along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>.
+
+(require 'byte2c)
 
 (defconst bytecode-driver-object-hash-dir "src/elo/"
   "Where the files live, relative to the build root.")
@@ -104,7 +106,9 @@ Updates `bytecode-driver-load-object-hash'."
          (full-object-name (expand-file-name object-name
                                              bytecode-driver-object-hash-dir)))
     (cl-incf bytecode-driver-object-counter)
-    (gcc--compile bytecode function-name full-object-name)
+    (with-temp-buffer
+      (byte2c function-name bytecode)
+      (write-region nil nil full-object-name))
     (puthash bytecode count bytecode-driver-load-object-hash)))
 
 (defun bytecode-driver-write-link-file (bytecodes)
@@ -177,5 +181,7 @@ Updates `bytecode-driver-load-object-hash'."
     ;; Finally, write out the C file that lets us associate bytecode
     ;; with compiled code.
     (bytecode-driver-write-link-file all-bytecodes)))
+
+(provide 'bytecode-driver)
 
 ;;; bytecode-driver.el ends here
