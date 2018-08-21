@@ -223,7 +223,6 @@
           ;; If DEPTH is nil, then we've found some dead code, which
           ;; we can just ignore.
           (when depth
-            (message "P: %S" insn)
             (cl-case (car insn)
               (byte-stack-ref
                (insert "  "

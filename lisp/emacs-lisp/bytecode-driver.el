@@ -171,6 +171,7 @@ Updates `bytecode-driver-object-hash'."
                    (remhash code old-hash)
                    (puthash code hval bytecode-driver-object-hash))
                ;; The function hasn't been compiled yet, so do it now.
+               (message "Compiling %S" sym)
                (bytecode-driver-one-function code)))))))
     (bytecode-driver-write-object-hash)
     ;; Now the old hash table only contains entries that are no longer
