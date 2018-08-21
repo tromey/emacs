@@ -68,20 +68,6 @@
           ;; stack depth and compute the effect of this instruction.
           (setf (aref depths pc) stack-depth)
           (cl-incf stack-depth (byte-compile-stack-adjustment op argument))
-          ;; (cond
-          ;;  ;; FIXME byte-call has a non-nil stack effect in the
-          ;;  ;; byte-stack+-info vector - why?
-          ;;  ((eq op 'byte-call)
-          ;;   (cl-decf stack-depth argument))
-          ;;  ((numberp stack-effect)
-          ;;   (cl-incf stack-depth stack-effect))
-          ;;  ((memq op '(byte-listN byte-concatN byte-insertN))
-          ;;   (cl-decf stack-depth (1- argument)))
-          ;;  ((memq op '(byte-discardN byte-discardN-preserve-tos))
-          ;;   (cl-assert (<= argument #x80))
-          ;;   (cl-decf stack-depth argument))
-          ;;  (t
-          ;;   (error "unhandled case %S" op)))
           ;; Now push on the work list.  This is crazily inefficient
           ;; but who cares.
           (let* ((new-pc (and (consp argument)
