@@ -18,6 +18,7 @@
 ;; along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>.
 
 (require 'byte2c)
+(require 'cl-lib)
 
 (defconst bytecode-driver-object-hash-dir "src/elo/"
   "Where the files live, relative to the build root.")
@@ -54,7 +55,7 @@ Compares two bytecode objects, excluding their doc string values."
   "Hash function for the hash table.
 Computes the hash code of a bytecode object, excluding its
 doc string value."
-  (apply #'+
+  (funcall #'+
          (sxhash (aref code 0))
          (sxhash (aref code 1))
          (sxhash (aref code 2))
@@ -99,7 +100,7 @@ doc string value."
 (defun bytecode-driver-one-function (bytecode)
   "Compile a single function.
 Writes the object code to the appropriate location.
-Updates `bytecode-driver-load-object-hash'."
+Updates `bytecode-driver-object-hash'."
   (let* ((count bytecode-driver-object-counter)
          (function-name (bytecode-driver-function-name count))
          (object-name (bytecode-driver-object-name count))
@@ -109,7 +110,7 @@ Updates `bytecode-driver-load-object-hash'."
     (with-temp-buffer
       (byte2c function-name bytecode)
       (write-region nil nil full-object-name))
-    (puthash bytecode count bytecode-driver-load-object-hash)))
+    (puthash bytecode count bytecode-driver-object-hash)))
 
 (defun bytecode-driver-write-link-file (bytecodes)
   "Write the .c file for the runtime linker."
@@ -146,6 +147,8 @@ Updates `bytecode-driver-load-object-hash'."
 
 (defun bytecode-driver-all ()
   "Compile all loaded bytecode functions to object files."
+  (unless (file-exists-p bytecode-driver-object-hash-dir)
+    (make-directory bytecode-driver-object-hash-dir))
   (bytecode-driver-load-object-hash)
   ;; We are going to populate a new hash table with the results, but
   ;; we want the old one around for reference and cleanup.
@@ -156,7 +159,6 @@ Updates `bytecode-driver-load-object-hash'."
         (all-bytecodes nil))
     (setq bytecode-driver-object-hash (make-hash-table :test 'bytecode-driver-hash))
     ;; See what functions must still be compiled.
-    ;; FIXME should walk over the purify hash table instead
     (mapatoms
      (lambda (sym)
        (let ((code (symbol-function sym)))

@@ -19,6 +19,7 @@
 
 (require 'byte-opt)
 (require 'bytecomp)
+(require 'cl-lib)
 
 (defun byte-check--next-nonnil (array index)
   (cl-incf index)
@@ -56,14 +57,12 @@
              (pc (car item))
              (stack-depth (cdr item))
              (op (car (aref ops pc)))
-             (op-value (symbol-value op))
-             (argument (cdr (aref ops pc)))
-             (stack-effect (aref byte-stack+-info op-value)))
+             (argument (cdr (aref ops pc))))
         ;; If the stack depth is already known at this PC, assert it,
         ;; but do no further work.
         (if (aref depths pc)
             (unless (eq (aref depths pc) stack-depth) nil
-                    (message "Failed at %S PC=%S, %S != %S" sym pc
+                    (message "Failed at PC=%S, %S != %S" pc
                              (aref depths pc) stack-depth))
           ;; Otherwise, we haven't visited this code yet, so store the
           ;; stack depth and compute the effect of this instruction.
@@ -153,7 +152,7 @@
            (b2c-local depth) ", " ,kind ");\n"
            "  if (sys_setjmp (c->jump)) {\n"
            "    handlerlist = c->next;\n"
-           "    " (b2c-local depth) " = c->val;\n"f
+           "    " (b2c-local depth) " = c->val;\n"
            "    goto L" (int-to-string (cadr insn)) ";\n"
            "  }\n"
            "  }\n"))
@@ -169,16 +168,34 @@
       (insert ", ")))
   (insert " });\n"))
 
-(defun b2c-fake-constants (constants)
-  ;; We make a constant vector whose elements are indices, so that we
-  ;; have the index available where we need it.
-  (let ((result (make-vector (length constants) nil)))
+(defmacro b2c-car-or-cdr (fn)
+  `(insert "  if (CONSP ("
+           (b2c-local depth) "))\n"
+           "    " (b2c-local depth) " = " ,fn " ("
+           (b2c-local depth) ");\n"
+           "  else if (!NILP ("
+           (b2c-local depth) "))\n"
+           "    wrong_type_argument (Qlistp, "
+           (b2c-local depth) ");\n"))
+
+(defmacro b2c-arithcompare (kind)
+  `(insert "  "
+           (b2c-local (1- depth)) " = arithcompare ("
+           (b2c-local (1- depth)) ", "
+           (b2c-local depth) ", " ,kind ");\n"))
+
+(defun b2c-constant-map (constants)
+  (let ((result (make-hash-table :test 'eql)))
     (dotimes (i (length constants))
-      (aset result i i))
+      (puthash (aref constants i) i result))
     result))
+
+(defsubst b2c-cindex (value hash)
+  (gethash value hash))
 
 (defun byte2c-prologue (name arglist stack-depth)
   (insert "Lisp_Object " name "(")
+  (ignore arglist)
   ;; fixme arglist
   (insert "Lisp_Object constants)\n{\n")
   (dotimes (i stack-depth)
@@ -190,8 +207,8 @@
 (defun byte2c (name bytecode)
   (let* ((bytes (string-as-unibyte (aref bytecode 1)))
          (constants (aref bytecode 2))
-         (lapcode (byte-decompile-bytecode bytes
-                                           (b2c-fake-constants constants)))
+         (cmap (b2c-constant-map constants))
+         (lapcode (byte-decompile-bytecode bytes  constants))
          (stack-depths (byte-check-lapcode bytes lapcode (aref bytecode 0))))
     (byte2c-prologue name (aref bytecode 0) (aref bytecode 3))
     ;; Note that because we have stack depths already computed, we can
@@ -199,39 +216,43 @@
     (while lapcode
       (let ((pc (pop lapcode))
             (insn (pop lapcode)))
-        (when (eq (car insn 'TAG))
+        (when (eq (car insn) 'TAG)
           (insert "L" (int-to-string (cadr insn)) ":")
           (setq insn (pop lapcode)))
         (let ((depth (aref stack-depths pc)))
           ;; If DEPTH is nil, then we've found some dead code, which
           ;; we can just ignore.
           (when depth
+            (message "P: %S" insn)
             (cl-case (car insn)
               (byte-stack-ref
                (insert "  "
                        (b2c-local (1+ depth)) " = "
-                       (b2c-local (- depth (cadr insn))) ";\n"))
+                       (b2c-local (- depth (cdr insn))) ";\n"))
               (byte-varref
-               ;; bytecode interp inlines more here
-               (insert "  "
-                       (b2c-local (1+ depth))
-                       " = Fsymbol_value (vectorp["
-                       (int-to-string (cadr insn))
-                       "]);\n"))
+               (let ((idx (b2c-cindex (cadr insn) cmap)))
+                 ;; bytecode interp inlines more here
+                 (insert "  "
+                         (b2c-local (1+ depth))
+                         " = Fsymbol_value (vectorp["
+                         (int-to-string idx)
+                         "]);\n")))
               (byte-varset
-               (insert "  set_internal (vectorp["
-                       (int-to-string (cadr insn))
-                       "], "
-                       (b2c-local depth) ", Qnil, SET_INTERNAL_SET);\n"))
+               (let ((idx (b2c-cindex (cadr insn) cmap)))
+                 (insert "  set_internal (vectorp["
+                         (int-to-string idx)
+                         "], "
+                         (b2c-local depth) ", Qnil, SET_INTERNAL_SET);\n")))
               (byte-varbind
-               (insert "  specbind (vectorp["
-                       (int-to-string (cadr insn)) "], "
-                       (b2c-local depth) ");\n"))
+               (let ((idx (b2c-cindex (cadr insn) cmap)))
+                 (insert "  specbind (vectorp["
+                         (int-to-string idx) "], "
+                         (b2c-local depth) ");\n")))
               (byte-call
-               (b2c-ncall (cadr insn) "Ffuncall"))
+               (b2c-ncall (cdr insn) "Ffuncall" depth))
               (byte-unbind
                (insert "  unbind_to (SPECPDL_INDEX () - "
-                       (int-to-string (cadr insn))
+                       (int-to-string (cdr insn))
                        ", Qnil);\n"))
               (byte-pophandler
                (insert "  handlerlist = handlerlist->next;\n"))
@@ -241,7 +262,7 @@
                (b2c-push-handler "CONDITION_CASE"))
 
               (byte-nth
-               (b2c-ncall 2 "Fnth"))
+               (b2c-ncall 2 "Fnth" depth))
               ;; FIXME should we peephole optimize these or are qt/qnil
               ;; constants to the compiler?
               (byte-symbolp
@@ -281,9 +302,9 @@
               (byte-list2
                (b2c-binary "list2"))
               (byte-list3
-               (b2c-ncall 3 "Flist"))
+               (b2c-ncall 3 "Flist" depth))
               (byte-list4
-               (b2c-ncall 4 "Flist"))
+               (b2c-ncall 4 "Flist" depth))
 
               (byte-length
                (b2c-unary "Flength"))
@@ -316,11 +337,11 @@
                        (b2c-local depth) ");\n"))
 
               (byte-concat2
-               (b2c-ncall 2 "Fconcat"))
+               (b2c-ncall 2 "Fconcat" depth))
               (byte-concat3
-               (b2c-ncall 3 "Fconcat"))
+               (b2c-ncall 3 "Fconcat" depth))
               (byte-concat4
-               (b2c-ncall 4 "Fconcat"))
+               (b2c-ncall 4 "Fconcat" depth))
 
               (byte-sub1
                (insert "  (FIXNUMP ("
@@ -328,14 +349,14 @@
                        (b2c-local depth) ") != MOST_NEGATIVE_FIXNUM "
                        "? make_fixnum (XFIXNUM ("
                        (b2c-local depth) ") - 1) : Fsub1 ("
-                       (b2c-local depth ");\n")))
+                       (b2c-local depth) ");\n"))
               (byte-add1
                (insert "  (FIXNUMP ("
                        (b2c-local depth) ") && XFIXNUM ("
                        (b2c-local depth) ") != MOST_POSITIVE_FIXNUM "
                        "? make_fixnum (XFIXNUM ("
                        (b2c-local depth) ") + 1) : Fadd1 ("
-                       (b2c-local depth ");\n")))
+                       (b2c-local depth) ");\n"))
               (byte-eqlsign
                ;; byte interpreter inlines here
                (b2c-binary "Feql"))
@@ -348,7 +369,7 @@
               (byte-geq
                (b2c-arithcompare "ARITH_GRTR_OR_EQUAL"))
               (byte-diff
-               (b2c-ncall 2 "Fminus"))
+               (b2c-ncall 2 "Fminus" depth))
               (byte-negate
                (insert "  (FIXNUMP ("
                        (b2c-local depth) ") && XFIXNUM ("
@@ -356,22 +377,22 @@
                        "? make_fixnum (- XFIXNUM ("
                        ;; Need a temporary
                        (b2c-local depth) ")) : Fminus (1, Lisp_Object[] {"
-                       (b2c-local depth "});\n")))
+                       (b2c-local depth) "});\n"))
               (byte-plus
-               (b2c-ncall 2 "Fplus"))
+               (b2c-ncall 2 "Fplus" depth))
               (byte-max
-               (b2c-ncall 2 "Fmax"))
+               (b2c-ncall 2 "Fmax" depth))
               (byte-min
-               (b2c-ncall 2 "Fmin"))
+               (b2c-ncall 2 "Fmin" depth))
               (byte-mult
-               (b2c-ncall 2 "Ftimes"))
+               (b2c-ncall 2 "Ftimes" depth))
               (byte-point
                (insert "  "
                        (b2c-local depth) " = make_fixed_natnum (PT);\n"))
               (byte-goto-char
                (b2c-unary "Fgoto_char"))
               (byte-insert
-               (b2c-ncall 1 "Finsert"))
+               (b2c-ncall 1 "Finsert" depth))
               (byte-point-max
                (insert "  "
                        (b2c-local depth) " = make_fixed_natnum (ZV);\n"))
@@ -405,7 +426,7 @@
               (byte-set-buffer
                (b2c-unary "Fset_buffer"))
               (byte-save-current-buffer
-               (insert "  record_unwind_current_buffer ();\n")
+               (insert "  record_unwind_current_buffer ();\n"))
               (byte-forward-char
                (b2c-unary "Fforward_char"))
               (byte-forward-word
@@ -416,7 +437,8 @@
                (b2c-binary "Fskip_chars_backward"))
               (byte-forward-line
                (b2c-unary "Fforward_line"))
-              (byte-char-syntax fixme)
+              (byte-char-syntax
+               (error "FIXME"))
               (byte-buffer-substring
                (b2c-binary "Fbuffer_substring"))
               (byte-delete-region
@@ -427,17 +449,17 @@
                (b2c-nullary "Fwiden"))
               (byte-end-of-line
                (b2c-unary "Fwiden"))
-              (byte-constant2
+              ((byte-constant byte-constant2)
                (insert "  "
                        (b2c-local (1+ depth)) " = ")
                ;; We emit fixnums as compile-time constants
                ;; but nothing else.
-               (if (fixnump (aref constants (cadr insn)))
+               (if (fixnump (cadr insn))
                    (insert "make_fixnum ("
-                           (int-to-string (aref constants (cadr insn)))
+                           (int-to-string (cadr insn))
                            ")")
                  (insert "vectorp["
-                         (int-to-string (cadr insn))
+                         (int-to-string (b2c-cindex (cadr insn) cmap))
                          "]"))
                (insert ";\n"))
               (byte-goto
@@ -530,9 +552,9 @@
               (byte-cdr-safe
                (b2c-unary "CDR_SAFE"))
               (byte-nconc
-               (b2c-ncall 2 "Fnconc"))
+               (b2c-ncall 2 "Fnconc" depth))
               (byte-quo
-               (b2c-ncall 2 "Fquo"))
+               (b2c-ncall 2 "Fquo" depth))
               (byte-rem
                (b2c-binary "Frem"))
               (byte-numberp
@@ -540,15 +562,15 @@
               (byte-integerp
                (b2c-predicate "INTEGERP"))
               (byte-listN
-               (b2c-ncall (cadr insn) "Flist"))
+               (b2c-ncall (cdr insn) "Flist" depth))
               (byte-concatN
-               (b2c-ncall (cadr insn) "Fconcat"))
+               (b2c-ncall (cdr insn) "Fconcat" depth))
               (byte-insertN
-               (b2c-ncall (cadr insn) "Finsert"))
-              ((byte-stack-set byte-stack-set2)
-               (when (> (cadr insn) 0)
+               (b2c-ncall (cdr insn) "Finsert" depth))
+              ((byte-stack-set byte-stack-set2 byte-discardN-preserve-tos)
+               (when (> (cdr insn) 0)
                  (insert "  "
-                         (b2c-local (- depth (cadr insn)))
+                         (b2c-local (- depth (cdr insn)))
                          " = "
                          (b2c-local depth)
                          ";\n")))
@@ -556,7 +578,7 @@
                ;; Nothing
                )
               (t
-               (error "unrecognized byte op %S" (car insn)))))))))))
+               (error "unrecognized byte op %S" (car insn))))))))))
 
 (provide 'byte2c)
 
