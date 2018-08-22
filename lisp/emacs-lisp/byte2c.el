@@ -238,6 +238,9 @@
               (int-to-string nonrest) ", args + "
               (int-to-string nonrest) ") : Qnil;\n"))))
 
+(defun b2c-stringify (insn)
+  (replace-regexp-in-string "\\*/" "*\\/" (prin1-to-string insn) nil t))
+
 (defun byte2c (symbol name bytecode)
   (let* ((bytes (string-as-unibyte (aref bytecode 1)))
          (constants (aref bytecode 2))
@@ -261,10 +264,10 @@
             ;; If DEPTH is nil, then we've found some dead code, which
             ;; we can just ignore.
             (if (not depth)
-                (insert (format "  /* PC=%d, DEAD CODE=%S */\n"
-                                pc insn))
-              (insert (format "  /* PC=%d, stack-depth=%d, insn=%S */\n"
-                              pc depth insn))
+                (insert (format "  /* PC=%d, DEAD CODE=%s */\n"
+                                pc (b2c-stringify insn)))
+              (insert (format "  /* PC=%d, stack-depth=%d, insn=%s */\n"
+                              pc depth (b2c-stringify insn)))
               (cl-case (car insn)
                 (byte-stack-ref
                  (insert "  "
