@@ -230,11 +230,11 @@
     ;; Initialize optional arguments.
     (dotimes (i (- nonrest mandatory))
       (insert "  " (b2c-local (+ mandatory i 1)) " = ("
-              (int-to-string (+ mandatory i)) " < nargs ? args["
-              (int-to-string (+ mandatory i)) " : Qnil;\n"))
+              (int-to-string (+ mandatory i)) " < nargs) ? args["
+              (int-to-string (+ mandatory i)) "] : Qnil;\n"))
     (when rest
       (insert "  " (b2c-local (+ nonrest 1)) " = ("
-              (int-to-string nonrest) " < nargs ? Flist (nargs - "
+              (int-to-string nonrest) " < nargs) ? Flist (nargs - "
               (int-to-string nonrest) ", args + "
               (int-to-string nonrest) ") : Qnil;\n"))))
 
