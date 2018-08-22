@@ -111,7 +111,9 @@
               (maphash (lambda (_key tag)
                          (push (cons (aref tags (cadr tag)) stack-depth)
                                work-list))
-                       (car last-constant)))
+                       (car last-constant))
+              (when next-pc
+                (push (cons next-pc stack-depth) work-list)))
              (t
               (when (memq op '(byte-constant byte-constant2))
                 (setq next-constant (car argument)))
@@ -258,7 +260,9 @@
           (let ((depth (aref stack-depths pc)))
             ;; If DEPTH is nil, then we've found some dead code, which
             ;; we can just ignore.
-            (when depth
+            (if (not depth)
+                (insert (format "  /* PC=%d, DEAD CODE=%S */\n"
+                                pc insn))
               (insert (format "  /* PC=%d, stack-depth=%d, insn=%S */\n"
                               pc depth insn))
               (cl-case (car insn)
