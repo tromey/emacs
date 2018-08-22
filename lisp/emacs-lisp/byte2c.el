@@ -197,7 +197,7 @@
 (defun byte2c-prologue (symbol name arglist stack-depth)
   (when symbol
     (insert "/* From " (symbol-name symbol) "*/\n"))
-  (insert "Lisp_Object " name "(")
+  (insert "Lisp_Object " name " (")
   (ignore arglist)
   ;; fixme arglist
   (insert "Lisp_Object constants)\n{\n")
