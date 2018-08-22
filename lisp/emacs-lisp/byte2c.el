@@ -629,18 +629,19 @@
                  (insert "  { ptrdiff_t i = hash_lookup (XHASH_TABLE ("
                          (b2c-local (1- depth)) "), "
                          (b2c-local depth) ", NULL);\n"
-                         "  if (i >= 0) {\n"
-                         "    Lisp_Object val = HASH_VALUE (XHASH_TABLE ("
+                         "    if (i >= 0) {\n"
+                         "      Lisp_Object val = HASH_VALUE (XHASH_TABLE ("
                          (b2c-local (1- depth)) "), i);\n"
-                         "    int op = XFIXNUM (val);\n"
-                         "    switch (op) {\n")
+                         "      int op = XFIXNUM (val);\n"
+                         "      switch (op) {\n")
                  (maphash
                   (lambda (_ignore tag)
                     (insert "      case " (int-to-string (cadr tag))
                             ": goto L"
                             (int-to-string (cadr tag))
                             ";\n"))
-                  (car last-constant)))
+                  (car last-constant))
+                 (insert "      }\n    }\n  }\n"))
                 (t
                  (error "unrecognized byte op %S" (car insn)))))))))
     (insert "}")))
