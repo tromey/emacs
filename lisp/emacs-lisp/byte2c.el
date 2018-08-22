@@ -155,12 +155,12 @@
 
 (defun b2c-ncall (n fn depth)
   (insert "  "
-          (b2c-local (- depth n)) " = "
-          fn "(" (int-to-string n)
+          (b2c-local (- depth n -1)) " = "
+          fn " (" (int-to-string n)
           ", Lisp_Object[] { ")
   (dotimes (i n)
-    (insert (b2c-local (- depth (- n i))))
-    (when (< i n)
+    (insert (b2c-local (- depth (- n i 1))))
+    (when (< i (1- n))
       (insert ", ")))
   (insert " });\n"))
 
@@ -195,17 +195,46 @@
            (gethash (cdr value) hash))))
 
 (defun byte2c-prologue (symbol name arglist stack-depth)
+  (insert "#include <config.h>\n")
+  (insert "#include \"lisp.h\"\n")
   (when symbol
-    (insert "/* From " (symbol-name symbol) "*/\n"))
-  (insert "Lisp_Object " name " (")
-  (ignore arglist)
-  ;; fixme arglist
-  (insert "Lisp_Object constants)\n{\n")
+    (insert "/* From " (symbol-name symbol) " */\n"))
+  (insert "Lisp_Object " name
+          " (ptrdiff_t nargs, Lisp_Object *args, "
+          "Lisp_Object constants)\n{\n")
+  ;; Declarations
   (dotimes (i stack-depth)
     (insert "  Lisp_Object "
             (b2c-local (1+ i))
             ";\n"))
-  (insert "  Lisp_Object *vectorp = &XVECTOR (constants)->contents;\n"))
+  (insert "  Lisp_Object *vectorp = &XVECTOR (constants)->contents;\n")
+  (insert "\n")
+  ;; Argument handling.
+  (let ((rest (/= (logand arglist 128) 0))
+        (mandatory (logand arglist 127))
+        (nonrest (lsh arglist -8)))
+    (insert "  if (! (" (int-to-string mandatory) " <= nargs")
+    (unless rest
+      (insert " && nargs <= " (int-to-string nonrest)))
+    (insert "))\n"
+            "    Fsignal (Qwrong_number_of_arguments, "
+            "list2 (Fcons (make_fixnum ("
+            (int-to-string mandatory) "), make_fixnum ("
+            (int-to-string nonrest) ")), make_fixnum (nargs)));\n")
+    ;; Initialize the mandatory arguments unconditionally.
+    (dotimes (i mandatory)
+      (insert "  " (b2c-local (1+ i)) " = args["
+              (int-to-string i) "];\n"))
+    ;; Initialize optional arguments.
+    (dotimes (i (- nonrest mandatory))
+      (insert "  " (b2c-local (+ mandatory i 1)) " = ("
+              (int-to-string (+ mandatory i)) " < nargs ? args["
+              (int-to-string (+ mandatory i)) " : Qnil;\n"))
+    (when rest
+      (insert "  " (b2c-local (+ nonrest 1)) " = ("
+              (int-to-string nonrest) " < nargs ? Flist (nargs - "
+              (int-to-string nonrest) ", args + "
+              (int-to-string nonrest) ") : Qnil;\n"))))
 
 (defun byte2c (symbol name bytecode)
   (let* ((bytes (string-as-unibyte (aref bytecode 1)))
@@ -222,7 +251,7 @@
         (let ((pc (pop lapcode))
               (insn (pop lapcode)))
           (when (eq (car insn) 'TAG)
-            (insert "L" (int-to-string (cadr insn)) ":")
+            (insert "L" (int-to-string (cadr insn)) ":\n")
             (setq insn (pop lapcode)))
           (setq last-constant next-constant)
           (setq next-constant last-constant)
@@ -230,6 +259,8 @@
             ;; If DEPTH is nil, then we've found some dead code, which
             ;; we can just ignore.
             (when depth
+              (insert (format "  /* PC=%d, stack-depth=%d, insn=%S */\n"
+                              pc depth insn))
               (cl-case (car insn)
                 (byte-stack-ref
                  (insert "  "
@@ -255,7 +286,7 @@
                            (int-to-string idx) "], "
                            (b2c-local depth) ");\n")))
                 (byte-call
-                 (b2c-ncall (cdr insn) "Ffuncall" depth))
+                 (b2c-ncall (1+ (cdr insn)) "Ffuncall" depth))
                 (byte-unbind
                  (insert "  unbind_to (SPECPDL_INDEX () - "
                          (int-to-string (cdr insn))

@@ -31,7 +31,8 @@
   "The object hash table.
 A key in this table is a bytecode object.
 A value is the serial number of the bytecode object,
-and NAME is the object file name, relative to `bytecode-driver-object-hash-file'.")
+and NAME is the object file name, relative to
+ `bytecode-driver-object-hash-file'.")
 
 (defvar bytecode-driver-object-counter 0
   "The next serial number to be handed out.")
@@ -76,7 +77,8 @@ doc string value."
         (setq bytecode-driver-object-counter (car desc))
         (setq bytecode-driver-object-hash (cdr desc)))))
   (unless (hash-table-p bytecode-driver-object-hash)
-    (setq bytecode-driver-object-hash (make-hash-table :test 'bytecode-driver-hash))))
+    (setq bytecode-driver-object-hash (make-hash-table
+                                       :test 'bytecode-driver-hash))))
 
 (defun bytecode-driver-write-object-hash ()
   "Write the object hash table."
@@ -127,8 +129,9 @@ Updates `bytecode-driver-object-hash'."
            (sort (delq nil
                        (mapcar
                         (lambda (bytecode)
-                          (let* ((serial (gethash bytecode
-                                                  bytecode-driver-object-hash)))
+                          (let* ((serial
+                                  (gethash bytecode
+                                           bytecode-driver-object-hash)))
                             (when (and serial
                                        (stringp (aref bytecode 1))
                                        (>= (length bytecode) 5)
@@ -142,14 +145,17 @@ Updates `bytecode-driver-object-hash'."
                    (< (car a) (car b))))))
       ;; First declare them.
       (dolist (item items)
-        (insert "extern void " (cdr item) " (void);\n"))
+        (insert "extern Lisp_Object " (cdr item)
+                " (ptrdiff_t, Lisp_Object *, Lisp_Object);\n"))
+      (insert "\n")
       ;; Now the table.
       (insert "struct function_map compiled_elisp_functions[] = {\n")
       (dolist (item items)
         (insert "  { " (number-to-string (car item)) ", " (cdr item) "},\n"))
       (insert "};\n"))
     (write-region nil nil
-                  (expand-file-name "link.c" bytecode-driver-object-hash-dir))))
+                  (expand-file-name "link.c"
+                                    bytecode-driver-object-hash-dir))))
 
 (defun bytecode-driver-all ()
   "Compile all loaded bytecode functions to object files."
@@ -163,7 +169,8 @@ Updates `bytecode-driver-object-hash'."
         ;; function, we have to keep a list of the actual bytecode
         ;; objects we have compiled.
         (all-bytecodes nil))
-    (setq bytecode-driver-object-hash (make-hash-table :test 'bytecode-driver-hash))
+    (setq bytecode-driver-object-hash (make-hash-table
+                                       :test 'bytecode-driver-hash))
     ;; See what functions must still be compiled.
     (mapatoms
      (lambda (sym)
