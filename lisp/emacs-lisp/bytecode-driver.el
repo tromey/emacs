@@ -123,24 +123,30 @@ Updates `bytecode-driver-object-hash'."
     ;; that can be used at runtime.
     (insert "#include <config.h>\n")
     (insert "#include \"lisp.h\"\n")
-    (let ((items (sort (mapcar
+    (let ((items
+           (sort (delq nil
+                       (mapcar
                         (lambda (bytecode)
                           (let* ((serial (gethash bytecode
                                                   bytecode-driver-object-hash)))
-                            ;; Map from the function's doc string
-                            ;; index to the name of the function.
-                            (cons (aref bytecode 4)
-                                  (bytecode-driver-function-name serial))))
-                        bytecodes)
-                       (lambda (a b)
-                         (< (car a) (car b))))))
+                            (when (and serial
+                                       (stringp (aref bytecode 1))
+                                       (>= (length bytecode) 5)
+                                       (integerp (aref bytecode 4)))
+                              ;; Map from the function's doc string
+                              ;; index to the name of the function.
+                              (cons (aref bytecode 4)
+                                    (bytecode-driver-function-name serial)))))
+                        bytecodes))
+                 (lambda (a b)
+                   (< (car a) (car b))))))
       ;; First declare them.
       (dolist (item items)
         (insert "extern void " (cdr item) " (void);\n"))
       ;; Now the table.
       (insert "struct function_map compiled_elisp_functions[] = {\n")
       (dolist (item items)
-        (insert "  { " (number-to-string (car item)) ", " (cdr item)))
+        (insert "  { " (number-to-string (car item)) ", " (cdr item) "},\n"))
       (insert "};\n"))
     (write-region nil nil
                   (expand-file-name "link.c" bytecode-driver-object-hash-dir))))
@@ -174,7 +180,7 @@ Updates `bytecode-driver-object-hash'."
                ;; The function hasn't been compiled yet, so do it now.
                (message "Compiling %S" sym)
                (bytecode-driver-one-function sym code)))))))
-    (bytecode-driver-write-object-hash)
+    ;; (bytecode-driver-write-object-hash)
     ;; Now the old hash table only contains entries that are no longer
     ;; needed.  So, delete those object files.
     (maphash
