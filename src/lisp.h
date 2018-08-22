@@ -4508,6 +4508,7 @@ extern void syms_of_doc (void);
 extern int read_bytecode_char (bool);
 
 /* Defined in bytecode.c.  */
+extern void bcall0 (Lisp_Object f);
 extern void syms_of_bytecode (void);
 extern Lisp_Object exec_byte_code (Lisp_Object, Lisp_Object, Lisp_Object,
 				   Lisp_Object, ptrdiff_t, Lisp_Object *);
@@ -4732,6 +4733,12 @@ extern void *xpalloc (void *, ptrdiff_t *, ptrdiff_t, ptrdiff_t, ptrdiff_t);
 extern char *xstrdup (const char *) ATTRIBUTE_MALLOC;
 extern char *xlispstrdup (Lisp_Object) ATTRIBUTE_MALLOC;
 extern void dupstring (char **, char const *);
+
+struct function_map
+{
+  unsigned long value;
+  Lisp_Object (*func) (ptrdiff_t, Lisp_Object *, Lisp_Object);
+};
 
 /* Make DEST a copy of STRING's data.  Return a pointer to DEST's terminating
    NUL byte.  This is like stpcpy, except the source is a Lisp string.  */

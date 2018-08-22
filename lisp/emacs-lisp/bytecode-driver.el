@@ -144,9 +144,11 @@ Updates `bytecode-driver-object-hash'."
                  (lambda (a b)
                    (< (car a) (car b))))))
       ;; First declare them.
-      (dolist (item items)
-        (insert "extern Lisp_Object " (cdr item)
-                " (ptrdiff_t, Lisp_Object *, Lisp_Object);\n"))
+      (maphash
+       (lambda (_ignore iem)
+         (insert "extern Lisp_Object " (cdr item)
+                 " (ptrdiff_t, Lisp_Object *, Lisp_Object);\n"))
+       bytecode-driver-object-hash)
       (insert "\n")
       ;; Now the table.
       (insert "struct function_map compiled_elisp_functions[] = {\n")

@@ -148,7 +148,7 @@
   `(insert "  {\n"
            "  struct handler *c = push_handler ("
            (b2c-local depth) ", " ,kind ");\n"
-           "  if (sys_setjmp (c->jump)) {\n"
+           "  if (sys_setjmp (c->jmp)) {\n"
            "    handlerlist = c->next;\n"
            "    " (b2c-local depth) " = c->val;\n"
            "    goto L" (int-to-string (caddr insn)) ";\n"
@@ -159,7 +159,7 @@
   (insert "  "
           (b2c-local (- depth n -1)) " = "
           fn " (" (int-to-string n)
-          ", Lisp_Object[] { ")
+          ", (Lisp_Object[]) { ")
   (dotimes (i n)
     (insert (b2c-local (- depth (- n i 1))))
     (when (< i (1- n))
@@ -196,11 +196,17 @@
            (hash-table-p (cdr value))
            (gethash (cdr value) hash))))
 
-(defun byte2c-prologue (symbol name arglist stack-depth)
+(defun byte2c-prologue (symbol name arglist stack-depth constants)
   (insert "#include <config.h>\n")
   (insert "#include \"lisp.h\"\n")
+  (insert "#include \"buffer.h\"\n")
+  (insert "#include \"syntax.h\"\n")
   (when symbol
     (insert "/* From " (symbol-name symbol) " */\n"))
+  ;; Silly warning avoidance.
+  (insert "Lisp_Object " name
+          " (ptrdiff_t nargs, Lisp_Object *args, "
+          "Lisp_Object constants);\n")
   (insert "Lisp_Object " name
           " (ptrdiff_t nargs, Lisp_Object *args, "
           "Lisp_Object constants)\n{\n")
@@ -209,7 +215,8 @@
     (insert "  Lisp_Object "
             (b2c-local (1+ i))
             ";\n"))
-  (insert "  Lisp_Object *vectorp = &XVECTOR (constants)->contents;\n")
+  (when (> (length constants) 0)
+    (insert "  Lisp_Object *vectorp = &XVECTOR (constants)->contents[0];\n"))
   (insert "\n")
   ;; Argument handling.
   (let ((rest (/= (logand arglist 128) 0))
@@ -233,6 +240,10 @@
               (int-to-string (+ mandatory i)) " < nargs) ? args["
               (int-to-string (+ mandatory i)) "] : Qnil;\n"))
     (when rest
+      ;; FIXME: if a &rest argument is unused by the function, it
+      ;; would be nice if we could avoid this call.  (This does happen
+      ;; in Emacs.)  Could we mark Flist as __attribute__((const))?
+      ;; Not technically true but maybe true enough.
       (insert "  " (b2c-local (+ nonrest 1)) " = ("
               (int-to-string nonrest) " < nargs) ? Flist (nargs - "
               (int-to-string nonrest) ", args + "
@@ -247,7 +258,7 @@
          (cmap (b2c-constant-map constants))
          (lapcode (byte-decompile-bytecode bytes  constants))
          (stack-depths (byte-check-lapcode bytes lapcode (aref bytecode 0))))
-    (byte2c-prologue symbol name (aref bytecode 0) (aref bytecode 3))
+    (byte2c-prologue symbol name (aref bytecode 0) (aref bytecode 3) constants)
     ;; Note that because we have stack depths already computed, we can
     ;; simply compile all the code in a linear fashion.
     (let ((last-constant nil)
@@ -306,7 +317,7 @@
                  (b2c-push-handler "CONDITION_CASE"))
 
                 (byte-nth
-                 (b2c-ncall 2 "Fnth" depth))
+                 (b2c-binary "Fnth"))
                 ;; FIXME should we peephole optimize these or are qt/qnil
                 ;; constants to the compiler?
                 (byte-symbolp
@@ -390,14 +401,14 @@
                 (byte-sub1
                  (insert "  (FIXNUMP ("
                          (b2c-local depth) ") && XFIXNUM ("
-                         (b2c-local depth) ") != MOST_NEGATIVE_FIXNUM "
+                         (b2c-local depth) ") != MOST_NEGATIVE_FIXNUM) "
                          "? make_fixnum (XFIXNUM ("
                          (b2c-local depth) ") - 1) : Fsub1 ("
                          (b2c-local depth) ");\n"))
                 (byte-add1
                  (insert "  (FIXNUMP ("
                          (b2c-local depth) ") && XFIXNUM ("
-                         (b2c-local depth) ") != MOST_POSITIVE_FIXNUM "
+                         (b2c-local depth) ") != MOST_POSITIVE_FIXNUM) "
                          "? make_fixnum (XFIXNUM ("
                          (b2c-local depth) ") + 1) : Fadd1 ("
                          (b2c-local depth) ");\n"))
@@ -417,10 +428,10 @@
                 (byte-negate
                  (insert "  (FIXNUMP ("
                          (b2c-local depth) ") && XFIXNUM ("
-                         (b2c-local depth) ") != MOST_NEGATIVE_FIXNUM "
+                         (b2c-local depth) ") != MOST_NEGATIVE_FIXNUM) "
                          "? make_fixnum (- XFIXNUM ("
                          ;; Need a temporary
-                         (b2c-local depth) ")) : Fminus (1, Lisp_Object[] {"
+                         (b2c-local depth) ")) : Fminus (1, (Lisp_Object[]) {"
                          (b2c-local depth) "});\n"))
                 (byte-plus
                  (b2c-ncall 2 "Fplus" depth))
@@ -432,17 +443,17 @@
                  (b2c-ncall 2 "Ftimes" depth))
                 (byte-point
                  (insert "  "
-                         (b2c-local depth) " = make_fixed_natnum (PT);\n"))
+                         (b2c-local (1+ depth)) " = make_fixed_natnum (PT);\n"))
                 (byte-goto-char
                  (b2c-unary "Fgoto_char"))
                 (byte-insert
                  (b2c-ncall 1 "Finsert" depth))
                 (byte-point-max
                  (insert "  "
-                         (b2c-local depth) " = make_fixed_natnum (ZV);\n"))
+                         (b2c-local (1+ depth)) " = make_fixed_natnum (ZV);\n"))
                 (byte-point-min
                  (insert "  "
-                         (b2c-local depth) " = make_fixed_natnum (BEGV);\n"))
+                         (b2c-local (1+ depth)) " = make_fixed_natnum (BEGV);\n"))
                 (byte-char-after
                  (b2c-unary "Fchar_after"))
                 (byte-following-char
@@ -451,7 +462,7 @@
                  (b2c-nullary "Fprevious_char"))
                 (byte-current-column
                  (insert "  "
-                         (b2c-local depth)
+                         (b2c-local (1+ depth))
                          " = make_fixed_natnum (current_column ());\n"))
                 (byte-indent-to
                  (insert "  "
@@ -482,15 +493,15 @@
                 (byte-forward-line
                  (b2c-unary "Fforward_line"))
                 (byte-char-syntax
-                 (insert "  CHECK_CHARACTER ("
+                 (insert "  { CHECK_CHARACTER ("
                          (b2c-local depth) ");\n"
                          "  int c = XFIXNAT ("
                          (b2c-local depth) ");\n"
-                         "  if (NILP (BVAR (current_buffer, enable_multibyte_characters)))\n"
+                         "  if (NILP (BVAR (current_buffer, "
+                         "enable_multibyte_characters)))\n"
                          "    MAKE_CHAR_MULTIBYTE (c);\n"
                          "  " (b2c-local depth) " = "
-                         "make_fixnum (" (b2c-local depth)
-                         ", syntax_code_spec[SYNTAX (c)]);\n"))
+                         "make_fixnum (syntax_code_spec[SYNTAX (c)]);\n  }\n"))
                 (byte-buffer-substring
                  (b2c-binary "Fbuffer_substring"))
                 (byte-delete-region
@@ -500,7 +511,7 @@
                 (byte-widen
                  (b2c-nullary "Fwiden"))
                 (byte-end-of-line
-                 (b2c-unary "Fwiden"))
+                 (b2c-unary "Fend_of_line"))
                 ((byte-constant byte-constant2)
                  (insert "  "
                          (b2c-local (1+ depth)) " = ")

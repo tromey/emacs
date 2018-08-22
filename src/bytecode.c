@@ -322,7 +322,7 @@ If the third argument is incorrect, Emacs may crash.  */)
   return exec_byte_code (bytestr, vector, maxdepth, Qnil, 0, NULL);
 }
 
-static void
+void
 bcall0 (Lisp_Object f)
 {
   Ffuncall (1, &f);
