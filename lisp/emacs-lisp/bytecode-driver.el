@@ -169,7 +169,9 @@ Updates `bytecode-driver-object-hash'."
      (lambda (sym)
        (let ((code (symbol-function sym)))
          (when (and (byte-code-function-p code)
-                    (stringp (aref code 1)))
+                    (stringp (aref code 1))
+                    ;; Only lexical-binding functions.
+                    (integerp (aref code 0)))
            (push code all-bytecodes)
            (let ((hval (gethash code old-hash)))
              (if hval
