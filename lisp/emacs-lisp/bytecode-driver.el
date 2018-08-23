@@ -117,7 +117,7 @@ Updates `bytecode-driver-object-hash'."
 (defun bytecode-driver-write-link-file (bytecodes)
   "Write the .c file for the runtime linker."
   (with-temp-buffer
-    ;; More than one bytecode objects might correspond to a single
+    ;; More than one bytecode object might correspond to a single
     ;; compiled function, because they might differ only in their
     ;; docstring index, which is ignored.  So here we make a list that
     ;; maps from doc string index to function name, then sort it in
