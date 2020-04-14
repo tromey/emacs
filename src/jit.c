@@ -35,31 +35,9 @@ along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>.  */
 
 static bool emacs_jit_initialized;
 
-jit_context_t emacs_jit_context;
+static MIR_context_t emacs_jit_context;
 
-static jit_type_t nullary_signature;
-static jit_type_t unary_signature;
-static jit_type_t binary_signature;
-static jit_type_t ternary_signature;
-static jit_type_t unbind_n_signature;
-static jit_type_t temp_output_buffer_show_signature;
-static jit_type_t arithcompare_signature;
-static jit_type_t callN_signature;
-static jit_type_t compiled_signature;
-static jit_type_t wrong_number_of_arguments_signature;
-static jit_type_t set_internal_signature;
-static jit_type_t specbind_signature;
-static jit_type_t record_unwind_protect_excursion_signature;
-static jit_type_t record_unwind_protect_signature;
-static jit_type_t void_void_signature;
-static jit_type_t lisp_void_signature;
-static jit_type_t push_handler_signature;
-static jit_type_t setjmp_signature;
-static jit_type_t internal_catch_signature;
-
-static jit_type_t subr_signature[SUBR_MAX_ARGS];
-
-static jit_type_t ptrdiff_t_type, lisp_object_type;
+static MIR_type_t ptrdiff_t_type, lisp_object_type;
 
 
 /* Make a pointer constant.  */
@@ -746,7 +724,7 @@ compile (ptrdiff_t bytestr_length, unsigned char *bytestr_data,
   result->min_args = 0;
   result->max_args = MANY;
 
-  jit_type_t function_signature = compiled_signature;
+  MIR_type_t function_signature = compiled_signature;
 
   bool parse_args = true;
   if (FIXNUMP (args_template))
@@ -2356,110 +2334,67 @@ syms_of_jit (void)
 void
 init_jit (void)
 {
-#define LEN SUBR_MAX_ARGS
-
-  jit_type_t params[LEN];
-  int i;
-
 #if EMACS_INT_MAX <= LONG_MAX
   /* 32-bit builds without wide ints, 64-bit builds on Posix hosts.  */
-  lisp_object_type = jit_type_void_ptr;
+  lisp_object_type = MIR_T_P;
 #else
   /* 64-bit builds on MS-Windows, 32-bit builds with wide ints.  */
-  lisp_object_type = jit_type_sys_longlong;
+  lisp_object_type = MIR_T_U64;
 #endif
 
-  jit_init ();
-  emacs_jit_context = jit_context_create ();
+  emacs_jit_context = MIR_init ();
 
   if (sizeof (ptrdiff_t) == 8)
-    ptrdiff_t_type = jit_type_ulong;
+    ptrdiff_t_type = MIR_T_U64;
   else
     {
       eassert (sizeof (ptrdiff_t) == 4);
-      ptrdiff_t_type = jit_type_uint;
+      ptrdiff_t_type = MIR_T_U32;
     }
 
-  for (i = 0; i < LEN; ++i)
-    params[i] = lisp_object_type;
+#define EXPORT(fun) MIR_load_external (emacs_jit_context, # fun, fun)
 
-  for (i = 0; i < SUBR_MAX_ARGS; ++i)
-    subr_signature[i] = jit_type_create_signature (jit_abi_cdecl,
-						   lisp_object_type,
-						   params, i, 1);
+  EXPORT (wrong_type_argument);
+  EXPORT (Fsub1);
+  EXPORT (Fadd1);
+  EXPORT (negate);
+  EXPORT (Flist);
+  EXPORT (Fsymbol_value);
+  EXPORT (Fsymbol_function);
+  EXPORT (set_internal);
+  EXPORT (specbind);
+  EXPORT (unbind_n);
+  EXPORT (record_unwind_protect_excursion);
+  EXPORT (record_unwind_current_buffer);
+  EXPORT (native_save_window_excursion);
+  EXPORT (save_restriction_save);
+  EXPORT (record_unwind_protect);
+  EXPORT (internal_catch);
+  EXPORT (push_handler);
+  EXPORT (setjmp);
+  EXPORT (temp_output_buffer_show);
+  EXPORT (unbind_n);
+  EXPORT (Fcons);
+  EXPORT (call0);		/* FIXME? */
+  EXPORT (Fgethash);
+  EXPORT (wrong_number_of_arguments);
+  EXPORT (Fmemq);
+  EXPORT (internal_lisp_condition_case);
+  EXPORT (native_temp_output_buffer_setup);
+  EXPORT (Fnth);
+  EXPORT (Flength);
+  EXPORT (Faref);
+  EXPORT (Faset);
+  EXPORT (Fset);
+  EXPORT (Fget);
+  EXPORT (Fsubstring);
+  EXPORT (Fconcat);
+  EXPORT (Ffuncall);
+  EXPORT (arithcompare);
+  EXPORT (Frem);
+  EXPORT (Fgoto_char);
+  EXPORT (Finsert);
 
-  nullary_signature = jit_type_create_signature (jit_abi_cdecl,
-						 lisp_object_type, params, 0,
-						 1);
-  unary_signature = jit_type_create_signature (jit_abi_cdecl,
-					       lisp_object_type, params, 1,
-					       1);
-  binary_signature = jit_type_create_signature (jit_abi_cdecl,
-						lisp_object_type, params, 2,
-						1);
-  ternary_signature = jit_type_create_signature (jit_abi_cdecl,
-						 lisp_object_type, params, 3,
-						 1);
-  specbind_signature = jit_type_create_signature (jit_abi_cdecl,
-						  jit_type_void, params, 2, 1);
-  record_unwind_protect_excursion_signature
-    = jit_type_create_signature (jit_abi_cdecl, jit_type_void, NULL, 0, 1);
-  lisp_void_signature = jit_type_create_signature (jit_abi_cdecl,
-						   lisp_object_type, NULL, 0, 1);
-  void_void_signature = jit_type_create_signature (jit_abi_cdecl,
-						   jit_type_void, NULL, 0, 1);
-
-  temp_output_buffer_show_signature
-    = jit_type_create_signature (jit_abi_cdecl, jit_type_void, params, 1, 1);
-
-  params[0] = jit_type_void_ptr;
-  record_unwind_protect_signature
-    = jit_type_create_signature (jit_abi_cdecl, jit_type_void, params, 2, 1);
-
-  params[0] = lisp_object_type;
-  params[2] = jit_type_sys_int;
-  arithcompare_signature = jit_type_create_signature (jit_abi_cdecl,
-						      lisp_object_type,
-						      params, 3, 1);
-
-  params[0] = jit_type_sys_int;
-  unbind_n_signature = jit_type_create_signature (jit_abi_cdecl,
-						  lisp_object_type, params, 1,
-						  1);
-
-  params[0] = ptrdiff_t_type;
-  params[1] = jit_type_void_ptr;
-  callN_signature = jit_type_create_signature (jit_abi_cdecl,
-					       lisp_object_type, params, 2,
-					       1);
-  compiled_signature = callN_signature;
-
-  params[0] = jit_type_sys_int;
-  params[1] = jit_type_sys_int;
-  params[2] = jit_type_sys_int;
-  wrong_number_of_arguments_signature
-    = jit_type_create_signature (jit_abi_cdecl, jit_type_void, params, 3, 1);
-
-  params[0] = lisp_object_type;
-  params[1] = lisp_object_type;
-  params[2] = lisp_object_type;
-  params[3] = jit_type_sys_int;
-  set_internal_signature
-    = jit_type_create_signature (jit_abi_cdecl, jit_type_void, params, 4, 1);
-
-  setjmp_signature = jit_type_create_signature (jit_abi_cdecl,
-						jit_type_sys_int,
-						params, 1, 1);
-
-  params[1] = jit_type_sys_int;
-  push_handler_signature = jit_type_create_signature (jit_abi_cdecl,
-						      jit_type_void_ptr,
-						      params, 2, 1);
-
-  params[1] = jit_type_void_ptr;
-  internal_catch_signature = jit_type_create_signature (jit_abi_cdecl,
-							lisp_object_type,
-							params, 3, 1);
 
   emacs_jit_initialized = true;
 }
