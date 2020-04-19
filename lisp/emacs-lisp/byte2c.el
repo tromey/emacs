@@ -653,13 +653,17 @@
                          (b2c-local (1- depth)) "), i);\n"
                          "      int op = XFIXNUM (val);\n"
                          "      switch (op) {\n")
-                 (maphash
-                  (lambda (_ignore tag)
-                    (insert "      case " (int-to-string (cadr tag))
-                            ": goto L"
-                            (int-to-string (cadr tag))
-                            ";\n"))
-                  (car last-constant))
+                 (let ((seen-tags (make-hash-table)))
+                   (maphash
+                    (lambda (_ignore tag)
+                      (setq tag (cadr tag))
+                      (unless (gethash tag seen-tags)
+                        (insert "      case " (int-to-string tag)
+                                ": goto L"
+                                (int-to-string tag)
+                                ";\n")
+                        (puthash tag t seen-tags)))
+                    (car last-constant)))
                  (insert "      }\n    }\n  }\n"))
                 (t
                  (error "unrecognized byte op %S" (car insn)))))))))
