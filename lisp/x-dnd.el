@@ -1,4 +1,4 @@
-;;; x-dnd.el --- drag and drop support for X
+;;; x-dnd.el --- drag and drop support for X -*- lexical-binding: t -*-
 
 ;; Copyright (C) 2004-2020 Free Software Foundation, Inc.
 
