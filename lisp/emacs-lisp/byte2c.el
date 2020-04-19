@@ -222,35 +222,39 @@
       (insert "  Lisp_Object *vectorp = &XVECTOR (constants)->contents[0];\n"))
     (insert "\n")
     ;; Argument handling.
-    (when rest
-      (insert "  if (! (" (int-to-string mandatory) " <= nargs")
-      (insert "))\n"
-              "    Fsignal (Qwrong_number_of_arguments, "
-              "list2 (Fcons (make_fixnum ("
-              (int-to-string mandatory) "), make_fixnum ("
-              (int-to-string nonrest) ")), make_fixnum (nargs)));\n"))
-    ;; Initialize the mandatory arguments unconditionally.
-    (dotimes (i mandatory)
-      (insert "  " (b2c-local (1+ i)) " = ")
-      (if rest
-          (insert "args[" (int-to-string i) "]")
-        (insert "arg" (int-to-string i)))
-      (insert ";\n"))
-    ;; Initialize optional arguments.
-    (dotimes (i (- nonrest mandatory))
-      (insert "  " (b2c-local (+ mandatory i 1)) " = ("
-              (int-to-string (+ mandatory i)) " < nargs) ? args["
-              (int-to-string (+ mandatory i)) "] : Qnil;\n"))
-    (when rest
-      ;; FIXME: if a &rest argument is unused by the function, it
-      ;; would be nice if we could avoid this call.  (This does happen
-      ;; in Emacs.)  Could we mark Flist as __attribute__((const))?
-      ;; Not technically true but maybe true enough.
-      ;; We could add a flag and just lazily create the list.
-      (insert "  " (b2c-local (+ nonrest 1)) " = ("
-              (int-to-string nonrest) " < nargs) ? Flist (nargs - "
-              (int-to-string nonrest) ", args + "
-              (int-to-string nonrest) ") : Qnil;\n"))))
+    (if rest
+        (progn
+          (insert "  if (! (" (int-to-string mandatory) " <= nargs")
+          (insert "))\n"
+                  "    Fsignal (Qwrong_number_of_arguments, "
+                  "list2 (Fcons (make_fixnum ("
+                  (int-to-string mandatory) "), make_fixnum ("
+                  (int-to-string nonrest) ")), make_fixnum (nargs)));\n")
+          ;; Initialize the mandatory arguments unconditionally.
+          (dotimes (i mandatory)
+            (insert "  " (b2c-local (1+ i)) " = "
+                    "args[" (int-to-string i) "]"
+                    ";\n"))
+          ;; Initialize optional arguments.
+          (dotimes (i (- nonrest mandatory))
+            (insert "  " (b2c-local (+ mandatory i 1)) " = ("
+                    (int-to-string (+ mandatory i)) " < nargs) ? args["
+                    (int-to-string (+ mandatory i)) "] : Qnil;\n"))
+          ;; FIXME: if a &rest argument is unused by the function, it
+          ;; would be nice if we could avoid this call.  (This does happen
+          ;; in Emacs.)  Could we mark Flist as __attribute__((const))?
+          ;; Not technically true but maybe true enough.
+          ;; We could add a flag and just lazily create the list.
+          (insert "  " (b2c-local (+ nonrest 1)) " = ("
+                  (int-to-string nonrest) " < nargs) ? Flist (nargs - "
+                  (int-to-string nonrest) ", args + "
+                  (int-to-string nonrest) ") : Qnil;\n"))
+      ;; For fixed arguments, we can just initialize them directly.
+      ;; We could just rename the arguments, but compilers are good at
+      ;; removing these redundancies, and it makes this simpler to
+      ;; write.
+      (dotimes (i mandatory)
+        (insert "  " (b2c-local (1+ i)) " = arg" (int-to-string i) ";\n")))))
 
 (defun b2c-stringify (insn)
   (replace-regexp-in-string "\\*/" "*\\/" (prin1-to-string insn) nil t))
