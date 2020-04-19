@@ -1,4 +1,4 @@
-;;; electric.el --- window maker and Command loop for `electric' modes
+;;; electric.el --- window maker and Command loop for `electric' modes -*- lexical-binding: t -*-
 
 ;; Copyright (C) 1985-1986, 1995, 2001-2020 Free Software Foundation,
 ;; Inc.
@@ -38,6 +38,9 @@
 ;;   electric key behavior.
 
 ;;; Code:
+
+(defvar electric-pair-open-newline-between-pairs)
+(defvar electric-layout-mode)
 
 ;; This loop is the guts for non-standard modes which retain control
 ;; until some event occurs.  It is a `do-forever', the only way out is
