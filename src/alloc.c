@@ -3421,14 +3421,27 @@ usage: (vector &rest OBJECTS)  */)
   return val;
 }
 
-void
+Lisp_Object
 make_byte_code (struct Lisp_Vector *v)
 {
+  Lisp_Object result;
+
   /* Don't allow the global zero_vector to become a byte code object.  */
   eassert (0 < v->header.size);
 
-  if (v->header.size > 1 && STRINGP (v->contents[1])
-      && STRING_MULTIBYTE (v->contents[1]))
+  if (v->header.size != COMPILED_VEC_LEN)
+    {
+      result = make_uninit_vector (COMPILED_VEC_LEN);
+      struct Lisp_Vector *p = XVECTOR (result);
+      int i;
+
+      for (i = 0; i < COMPILED_VEC_LEN; ++i)
+	p->contents[i] = i < v->header.size ? v->contents[i] : Qnil;
+
+      v = p;
+    }
+
+  if (STRINGP (v->contents[1]) && STRING_MULTIBYTE (v->contents[1]))
     /* BYTECODE-STRING must have been produced by Emacs 20.2 or the
        earlier because they produced a raw 8-bit string for byte-code
        and now such a byte-code string is loaded as multibyte while
@@ -3436,6 +3449,9 @@ make_byte_code (struct Lisp_Vector *v)
        must convert them back to the original unibyte form.  */
     v->contents[1] = Fstring_as_unibyte (v->contents[1]);
   XSETPVECTYPE (v, PVEC_COMPILED);
+
+  XSETCOMPILED (result, v);
+  return result;
 }
 
 DEFUN ("make-byte-code", Fmake_byte_code, Smake_byte_code, 4, MANY, 0,
@@ -3456,8 +3472,12 @@ stack before executing the byte-code.
 usage: (make-byte-code ARGLIST BYTE-CODE CONSTANTS DEPTH &optional DOCSTRING INTERACTIVE-SPEC &rest ELEMENTS)  */)
   (ptrdiff_t nargs, Lisp_Object *args)
 {
-  Lisp_Object val = make_uninit_vector (nargs);
-  struct Lisp_Vector *p = XVECTOR (val);
+  Lisp_Object val;
+  struct Lisp_Vector *p;
+  int i;
+
+  val = make_uninit_vector (COMPILED_VEC_LEN);
+  p = XVECTOR (val);
 
   /* We used to purecopy everything here, if purify-flag was set.  This worked
      OK for Emacs-23, but with Emacs-24's lexical binding code, it can be
@@ -3467,10 +3487,10 @@ usage: (make-byte-code ARGLIST BYTE-CODE CONSTANTS DEPTH &optional DOCSTRING INT
      just wasteful and other times plainly wrong (e.g. those free vars may want
      to be setcar'd).  */
 
-  memcpy (p->contents, args, nargs * sizeof *args);
-  make_byte_code (p);
-  XSETCOMPILED (val, p);
-  return val;
+  for (i = 0; i < COMPILED_VEC_LEN; ++i)
+    p->contents[i] = i < nargs ? args[i] : Qnil;
+
+  return make_byte_code (p);
 }
 
 
