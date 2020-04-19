@@ -146,7 +146,7 @@ Updates `bytecode-driver-object-hash'."
       ;; First declare them.
       (maphash
        (lambda (_ignore item)
-         (insert "extern Lisp_Object " (cdr item)
+         (insert "extern Lisp_Object " (bytecode-driver-function-name item)
                  " (ptrdiff_t, Lisp_Object *, Lisp_Object);\n"))
        bytecode-driver-object-hash)
       (insert "\n")
