@@ -196,7 +196,7 @@
            (hash-table-p (cdr value))
            (gethash (cdr value) hash))))
 
-(defun byte2c-prologue (symbol name arglist stack-depth constants)
+(defun byte2c-prologue (symbol name arglist stack-depth)
   (insert "#include <config.h>\n")
   (insert "#include \"lisp.h\"\n")
   (insert "#include \"buffer.h\"\n")
@@ -206,7 +206,8 @@
   ;; Parse the argument spec.
   (let ((rest (/= (logand arglist 128) 0))
         (mandatory (logand arglist 127))
-        (nonrest (lsh arglist -8)))
+        (nonrest (lsh arglist -8))
+        end-of-inits-point)
     (insert "Lisp_Object " name " (")
     (if rest
         (insert "ptrdiff_t nargs, Lisp_Object *args, ")
@@ -218,8 +219,7 @@
       (insert "  Lisp_Object "
               (b2c-local (1+ i))
               ";\n"))
-    (when (> (length constants) 0)
-      (insert "  Lisp_Object *vectorp = &XVECTOR (constants)->contents[0];\n"))
+    (setq end-of-inits-point (point))
     (insert "\n")
     ;; Argument handling.
     (if rest
@@ -254,18 +254,29 @@
       ;; removing these redundancies, and it makes this simpler to
       ;; write.
       (dotimes (i mandatory)
-        (insert "  " (b2c-local (1+ i)) " = arg" (int-to-string i) ";\n")))))
+        (insert "  " (b2c-local (1+ i)) " = arg" (int-to-string i) ";\n")))
+    ;; Return this for further use.
+    end-of-inits-point))
 
 (defun b2c-stringify (insn)
   (replace-regexp-in-string "\\*/" "*\\/" (prin1-to-string insn) nil t))
+
+(defun b2c-use-vector (end-of-inits-point)
+  (when end-of-inits-point
+    (save-excursion
+      (goto-char end-of-inits-point)
+      (insert "  Lisp_Object *vectorp = &XVECTOR (constants)->contents[0];\n")))
+  ;; Always return nil, because the result will be used as a flag.
+  nil)
 
 (defun byte2c (symbol name bytecode)
   (let* ((bytes (string-as-unibyte (aref bytecode 1)))
          (constants (aref bytecode 2))
          (cmap (b2c-constant-map constants))
          (lapcode (byte-decompile-bytecode bytes  constants))
-         (stack-depths (byte-check-lapcode bytes lapcode (aref bytecode 0))))
-    (byte2c-prologue symbol name (aref bytecode 0) (aref bytecode 3) constants)
+         (stack-depths (byte-check-lapcode bytes lapcode (aref bytecode 0)))
+         (end-of-inits-point (byte2c-prologue symbol name (aref bytecode 0)
+                                              (aref bytecode 3))))
     ;; Note that because we have stack depths already computed, we can
     ;; simply compile all the code in a linear fashion.
     (let ((last-constant nil)
@@ -293,6 +304,7 @@
                          (b2c-local (- depth (cdr insn))) ";\n"))
                 (byte-varref
                  (let ((idx (b2c-cindex (cadr insn) cmap)))
+                   (setq end-of-inits-point (b2c-use-vector end-of-inits-point))
                    ;; bytecode interp inlines more here
                    (insert "  "
                            (b2c-local (1+ depth))
@@ -301,12 +313,14 @@
                            "]);\n")))
                 (byte-varset
                  (let ((idx (b2c-cindex (cadr insn) cmap)))
+                   (setq end-of-inits-point (b2c-use-vector end-of-inits-point))
                    (insert "  set_internal (vectorp["
                            (int-to-string idx)
                            "], "
                            (b2c-local depth) ", Qnil, SET_INTERNAL_SET);\n")))
                 (byte-varbind
                  (let ((idx (b2c-cindex (cadr insn) cmap)))
+                   (setq end-of-inits-point (b2c-use-vector end-of-inits-point))
                    (insert "  specbind (vectorp["
                            (int-to-string idx) "], "
                            (b2c-local depth) ");\n")))
@@ -529,6 +543,7 @@
                      (insert "make_fixnum ("
                              (int-to-string (cadr insn))
                              ")")
+                   (setq end-of-inits-point (b2c-use-vector end-of-inits-point))
                    (insert "vectorp["
                            (int-to-string (b2c-cindex (cadr insn) cmap))
                            "]"))
