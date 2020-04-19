@@ -2986,10 +2986,7 @@ read1 (Lisp_Object readcharfun, int *pch, bool first_in_list)
 	      ASET (tmp, COMPILED_DOC_STRING, make_ufixnum (hash));
 	    }
 
-	  make_byte_code (vec);
-	  return tmp;
-	  // FIXME from the rebase -- ???
-	  // return Fmake_byte_code (vec->header.size, vec->contents);
+	  return Fmake_byte_code (vec->header.size, vec->contents);
 	}
       if (c == '(')
 	{
