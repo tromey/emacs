@@ -1,4 +1,4 @@
-;;; dynamic-setting.el --- Support dynamic changes
+;;; dynamic-setting.el --- Support dynamic changes -*- lexical-binding: t -*-
 
 ;; Copyright (C) 2009-2020 Free Software Foundation, Inc.
 
