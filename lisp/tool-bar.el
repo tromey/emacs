@@ -1,4 +1,4 @@
-;;; tool-bar.el --- setting up the tool bar
+;;; tool-bar.el --- setting up the tool bar -*- lexical-binding: t -*-
 
 ;; Copyright (C) 2000-2020 Free Software Foundation, Inc.
 
