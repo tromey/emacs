@@ -1,6 +1,6 @@
 ;;; bytecode-driver.el --- compiler driver  -*- lexical-binding: t -*-
 
-;;; Copyright (C) 2018 Free Software Foundation, Inc.
+;;; Copyright (C) 2018, 2020 Free Software Foundation, Inc.
 
 ;; This file is part of GNU Emacs.
 
@@ -145,7 +145,7 @@ Updates `bytecode-driver-object-hash'."
                    (< (car a) (car b))))))
       ;; First declare them.
       (maphash
-       (lambda (_ignore iem)
+       (lambda (_ignore item)
          (insert "extern Lisp_Object " (cdr item)
                  " (ptrdiff_t, Lisp_Object *, Lisp_Object);\n"))
        bytecode-driver-object-hash)
