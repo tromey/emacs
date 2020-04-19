@@ -429,6 +429,9 @@ obj = $(base_obj) $(NS_OBJC_OBJ)
 elo_src = $(wildcard elo/*.c)
 elo_obj = $(patsubst %.c,%.o,$(elo_src))
 
+make-elo-src:
+	cd .. && ./src/emacs --batch -l ./lisp/emacs-lisp/bytecode-driver.el -f toggle-debug-on-error -f bytecode-driver-all
+
 elo-obj: $(elo_obj)
 .PHONY: elo-obj
 
