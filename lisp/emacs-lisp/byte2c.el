@@ -1,6 +1,6 @@
 ;;; byte2c.el --- Emacs plus GCC  -*- lexical-binding: t -*-
 
-;;; Copyright (C) 2018 Free Software Foundation, Inc.
+;;; Copyright (C) 2018, 2020 Free Software Foundation, Inc.
 
 ;; This file is part of GNU Emacs.
 
@@ -244,6 +244,7 @@
       ;; would be nice if we could avoid this call.  (This does happen
       ;; in Emacs.)  Could we mark Flist as __attribute__((const))?
       ;; Not technically true but maybe true enough.
+      ;; We could add a flag and just lazily create the list.
       (insert "  " (b2c-local (+ nonrest 1)) " = ("
               (int-to-string nonrest) " < nargs) ? Flist (nargs - "
               (int-to-string nonrest) ", args + "
