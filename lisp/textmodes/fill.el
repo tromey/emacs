@@ -1,4 +1,4 @@
-;;; fill.el --- fill commands for Emacs
+;;; fill.el --- fill commands for Emacs -*- lexical-binding: t -*-
 
 ;; Copyright (C) 1985-1986, 1992, 1994-1997, 1999, 2001-2020 Free
 ;; Software Foundation, Inc.
