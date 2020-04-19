@@ -1,4 +1,4 @@
-;;; bindings.el --- define standard key bindings and some variables
+;;; bindings.el --- define standard key bindings and some variables -*- lexical-binding: t -*-
 
 ;; Copyright (C) 1985-1987, 1992-1996, 1999-2020 Free Software
 ;; Foundation, Inc.
