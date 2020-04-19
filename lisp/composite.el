@@ -1,4 +1,4 @@
-;;; composite.el --- support character composition
+;;; composite.el --- support character composition -*- lexical-binding: t -*-
 
 ;; Copyright (C) 2001-2020 Free Software Foundation, Inc.
 
