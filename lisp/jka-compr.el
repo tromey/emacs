@@ -1,4 +1,4 @@
-;;; jka-compr.el --- reading/writing/loading compressed files
+;;; jka-compr.el --- reading/writing/loading compressed files -*- lexical-binding: t -*-
 
 ;; Copyright (C) 1993-1995, 1997, 1999-2020 Free Software Foundation,
 ;; Inc.
