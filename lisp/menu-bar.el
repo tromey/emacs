@@ -1,4 +1,4 @@
-;;; menu-bar.el --- define a default menu bar
+;;; menu-bar.el --- define a default menu bar -*- lexical-binding: t -*-
 
 ;; Copyright (C) 1993-1995, 2000-2020 Free Software Foundation, Inc.
 
