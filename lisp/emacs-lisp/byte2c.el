@@ -209,7 +209,7 @@
         (nonrest (lsh arglist -8)))
     (insert "Lisp_Object " name " (")
     (if rest
-        (insert " (ptrdiff_t nargs, Lisp_Object *args, ")
+        (insert "ptrdiff_t nargs, Lisp_Object *args, ")
       (dotimes (i nonrest)
         (insert "Lisp_Object arg" (int-to-string i) ", ")))
     (insert "Lisp_Object constants)\n{\n")
