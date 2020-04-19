@@ -537,16 +537,19 @@
                  (insert "  "
                          (b2c-local (1+ depth)) " = ")
                  (setq next-constant (cadr insn))
-                 ;; We emit fixnums as compile-time constants
-                 ;; but nothing else.
-                 (if (fixnump (cadr insn))
-                     (insert "make_fixnum ("
-                             (int-to-string (cadr insn))
-                             ")")
+                 ;; Emit certain things as inline constants.
+                 (cond
+                  ((fixnump (cadr insn))
+                   (insert "make_fixnum ("
+                           (int-to-string (cadr insn))
+                           ")"))
+                  ((not (cadr insn))
+                   (insert "Qnil"))
+                  (t
                    (setq end-of-inits-point (b2c-use-vector end-of-inits-point))
                    (insert "vectorp["
                            (int-to-string (b2c-cindex (cadr insn) cmap))
-                           "]"))
+                           "]")))
                  (insert ";\n"))
                 (byte-goto
                  (insert "  goto L"
