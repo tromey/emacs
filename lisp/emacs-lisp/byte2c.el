@@ -203,37 +203,39 @@
   (insert "#include \"syntax.h\"\n")
   (when symbol
     (insert "/* From " (symbol-name symbol) " */\n"))
-  ;; Silly warning avoidance.
-  (insert "Lisp_Object " name
-          " (ptrdiff_t nargs, Lisp_Object *args, "
-          "Lisp_Object constants);\n")
-  (insert "Lisp_Object " name
-          " (ptrdiff_t nargs, Lisp_Object *args, "
-          "Lisp_Object constants)\n{\n")
-  ;; Declarations
-  (dotimes (i stack-depth)
-    (insert "  Lisp_Object "
-            (b2c-local (1+ i))
-            ";\n"))
-  (when (> (length constants) 0)
-    (insert "  Lisp_Object *vectorp = &XVECTOR (constants)->contents[0];\n"))
-  (insert "\n")
-  ;; Argument handling.
+  ;; Parse the argument spec.
   (let ((rest (/= (logand arglist 128) 0))
         (mandatory (logand arglist 127))
         (nonrest (lsh arglist -8)))
-    (insert "  if (! (" (int-to-string mandatory) " <= nargs")
-    (unless rest
-      (insert " && nargs <= " (int-to-string nonrest)))
-    (insert "))\n"
-            "    Fsignal (Qwrong_number_of_arguments, "
-            "list2 (Fcons (make_fixnum ("
-            (int-to-string mandatory) "), make_fixnum ("
-            (int-to-string nonrest) ")), make_fixnum (nargs)));\n")
+    (insert "Lisp_Object " name " (")
+    (if rest
+        (insert " (ptrdiff_t nargs, Lisp_Object *args, ")
+      (dotimes (i nonrest)
+        (insert "Lisp_Object arg" (int-to-string i) ", ")))
+    (insert "Lisp_Object constants)\n{\n")
+    ;; Declarations
+    (dotimes (i stack-depth)
+      (insert "  Lisp_Object "
+              (b2c-local (1+ i))
+              ";\n"))
+    (when (> (length constants) 0)
+      (insert "  Lisp_Object *vectorp = &XVECTOR (constants)->contents[0];\n"))
+    (insert "\n")
+    ;; Argument handling.
+    (when rest
+      (insert "  if (! (" (int-to-string mandatory) " <= nargs")
+      (insert "))\n"
+              "    Fsignal (Qwrong_number_of_arguments, "
+              "list2 (Fcons (make_fixnum ("
+              (int-to-string mandatory) "), make_fixnum ("
+              (int-to-string nonrest) ")), make_fixnum (nargs)));\n"))
     ;; Initialize the mandatory arguments unconditionally.
     (dotimes (i mandatory)
-      (insert "  " (b2c-local (1+ i)) " = args["
-              (int-to-string i) "];\n"))
+      (insert "  " (b2c-local (1+ i)) " = ")
+      (if rest
+          (insert "args[" (int-to-string i) "]")
+        (insert "arg" (int-to-string i)))
+      (insert ";\n"))
     ;; Initialize optional arguments.
     (dotimes (i (- nonrest mandatory))
       (insert "  " (b2c-local (+ mandatory i 1)) " = ("
