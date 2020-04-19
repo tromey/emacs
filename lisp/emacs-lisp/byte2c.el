@@ -500,7 +500,7 @@
                          (b2c-local depth) ");\n"
                          "  if (NILP (BVAR (current_buffer, "
                          "enable_multibyte_characters)))\n"
-                         "    MAKE_CHAR_MULTIBYTE (c);\n"
+                         "    make_char_multibyte (c);\n"
                          "  " (b2c-local depth) " = "
                          "make_fixnum (syntax_code_spec[SYNTAX (c)]);\n  }\n"))
                 (byte-buffer-substring
